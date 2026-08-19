@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: true_roi
+      POSTGRES_USER: true_roi
+      POSTGRES_PASSWORD: true_roi
+    volumes:
+      - true_roi_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U true_roi -d true_roi"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  catalog-seed:
+    build: .
+    command: ["python", "-m", "backend.app.seed_catalog"]
+    environment:
+      DATABASE_URL: postgresql://true_roi:true_roi@db:5432/true_roi
+      CATALOG_SOURCE_URL: https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins_not_grouped.json
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://true_roi:true_roi@db:5432/true_roi
+      CSFLOAT_API_KEY: ${CSFLOAT_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  true_roi_postgres:

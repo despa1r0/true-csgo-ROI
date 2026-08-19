@@ -17,6 +17,22 @@ class SkinSearchResult(BaseModel):
     csfloat_error: str | None = None
 
 
+class CatalogueSearchResult(BaseModel):
+    id: str
+    name: str
+    image_url: str | None = None
+    weapon_id: str | None = None
+    weapon_name: str | None = None
+    rarity_id: str | None = None
+    rarity_name: str | None = None
+    rarity_color: str | None = None
+    min_float: float | None = None
+    max_float: float | None = None
+    has_stattrak: bool
+    has_souvenir: bool
+    variant_count: int
+
+
 class CalculationRequest(BaseModel):
     """Параметры одной сделки, которые задаёт пользователь во фронтенде."""
 

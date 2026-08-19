@@ -3,10 +3,113 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Skin Market Tracker</title>
+    <meta name="description" content="Поиск скинов Counter-Strike 2 по локальному каталогу" />
+    <title>trueROI — поиск CS2 скинов</title>
+    <link rel="preconnect" href="https://raw.githubusercontent.com" />
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="trueROI — на главную">
+        <span class="brand-mark">tR</span>
+        <span>true<span>ROI</span></span>
+      </a>
+      <span class="catalog-status" id="catalogStatus">Каталог загружается…</span>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="pageTitle">
+        <p class="eyebrow">Каталог Counter-Strike 2</p>
+        <h1 id="pageTitle">Найдите нужный скин</h1>
+        <p class="lead">Начните вводить название — мы покажем совпадения, изображения и все доступные качества.</p>
+
+        <div class="search-shell" id="searchShell">
+          <div class="search-row">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.4a7.75 7.75 0 1 1-15.5 0 7.75 7.75 0 0 1 15.5 0Z"/></svg>
+            <input
+              id="searchInput"
+              type="search"
+              placeholder="Например, AK-47 | Redline"
+              autocomplete="off"
+              aria-label="Название скина"
+              aria-controls="suggestions"
+              aria-expanded="false"
+            />
+            <span class="shortcut" aria-hidden="true">/</span>
+          </div>
+
+          <div class="suggestions" id="suggestions" role="listbox" hidden></div>
+        </div>
+
+        <div class="filters" aria-label="Фильтры каталога">
+          <label>
+            <span>Оружие</span>
+            <select id="weaponFilter"><option value="">Любое</option></select>
+          </label>
+          <label>
+            <span>Редкость</span>
+            <select id="rarityFilter"><option value="">Любая</option></select>
+          </label>
+          <button class="reset-button" id="resetFilters" type="button">Сбросить</button>
+        </div>
+
+        <p class="search-hint" id="searchHint">Введите минимум 2 символа</p>
+      </section>
+
+      <section class="skin-view" id="skinView" hidden aria-live="polite">
+        <article class="skin-overview">
+          <div class="skin-image-wrap">
+            <img id="skinImage" alt="" />
+          </div>
+          <div class="skin-copy">
+            <div class="skin-meta">
+              <span id="skinWeapon"></span>
+              <span class="rarity" id="skinRarity"></span>
+            </div>
+            <h2 id="skinName"></h2>
+            <p id="skinDescription"></p>
+            <dl>
+              <div><dt>Float</dt><dd id="skinFloat"></dd></div>
+              <div><dt>Paint index</dt><dd id="skinPaint"></dd></div>
+            </dl>
+          </div>
+        </article>
+
+        <div class="quality-header">
+          <div>
+            <p class="eyebrow">Доступные варианты</p>
+            <h2>Качество скина</h2>
+          </div>
+          <div class="variant-filters" id="variantFilters" aria-label="Тип варианта">
+            <label><input type="checkbox" value="normal" checked /> Обычный</label>
+            <label><input type="checkbox" value="stattrak" checked /> StatTrak™</label>
+            <label><input type="checkbox" value="souvenir" checked /> Souvenir</label>
+          </div>
+        </div>
+
+        <div class="quality-grid" id="qualityGrid"></div>
+        <p class="empty-state" id="qualityEmpty" hidden>Для выбранных фильтров вариантов нет.</p>
+      </section>
+
+      <section class="empty-welcome" id="welcomeState">
+        <div class="welcome-icon">⌕</div>
+        <h2>Каталог готов к поиску</h2>
+        <p>Выберите скин из подсказок, чтобы увидеть качества и варианты.</p>
+      </section>
+    </main>
+
+    <template id="suggestionTemplate">
+      <button class="suggestion" type="button" role="option">
+        <span class="suggestion-image"><img alt="" loading="lazy" /></span>
+        <span class="suggestion-copy">
+          <strong></strong>
+          <small><span class="suggestion-weapon"></span><span class="dot">·</span><span class="suggestion-variants"></span></small>
+        </span>
+        <span class="rarity-line"></span>
+        <span class="arrow">→</span>
+      </button>
+    </template>
+
+    <script src="/app.js" defer></script>
   </body>
 </html>

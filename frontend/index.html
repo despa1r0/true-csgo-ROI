@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Поиск скинов Counter-Strike 2 по локальному каталогу" />
     <title>trueROI — поиск CS2 скинов</title>
-    <link rel="preconnect" href="https://raw.githubusercontent.com" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -19,9 +18,9 @@
 
     <main>
       <section class="hero" aria-labelledby="pageTitle">
-        <p class="eyebrow">Каталог Counter-Strike 2</p>
-        <h1 id="pageTitle">Найдите нужный скин</h1>
-        <p class="lead">Начните вводить название — мы покажем совпадения, изображения и все доступные качества.</p>
+        <p class="eyebrow">CS2 MARKET DATA</p>
+        <h1 id="pageTitle">Поиск скинов без лишнего шума</h1>
+        <p class="lead">Каталог, цены CSFloat и детали лотов в одном спокойном интерфейсе.</p>
 
         <div class="search-shell" id="searchShell">
           <div class="search-row">
@@ -42,15 +41,15 @@
         </div>
 
         <div class="filters" aria-label="Фильтры каталога">
-          <label>
-            <span>Оружие</span>
+          <label class="select-chip">
+            <span class="chip-label">Оружие</span>
             <select id="weaponFilter"><option value="">Любое</option></select>
           </label>
-          <label>
-            <span>Редкость</span>
+          <label class="select-chip">
+            <span class="chip-label">Редкость</span>
             <select id="rarityFilter"><option value="">Любая</option></select>
           </label>
-          <button class="reset-button" id="resetFilters" type="button">Сбросить</button>
+          <button class="reset-button filter-chip" id="resetFilters" type="button">Сбросить всё</button>
         </div>
 
         <p class="search-hint" id="searchHint">Введите минимум 2 символа</p>
@@ -77,13 +76,14 @@
 
         <div class="quality-header">
           <div>
-            <p class="eyebrow">Доступные варианты</p>
-            <h2>Качество скина</h2>
+            <p class="eyebrow">MARKET OVERVIEW</p>
+            <h2>Рынок по качеству</h2>
+            <p class="section-note">Нажмите на блок, чтобы увидеть метрики и первые 10 лотов.</p>
           </div>
           <div class="variant-filters" id="variantFilters" aria-label="Тип варианта">
-            <label><input type="checkbox" value="normal" checked /> Обычный</label>
-            <label><input type="checkbox" value="stattrak" checked /> StatTrak™</label>
-            <label><input type="checkbox" value="souvenir" checked /> Souvenir</label>
+            <label><input type="checkbox" value="normal" checked /><span>Обычный</span></label>
+            <label><input type="checkbox" value="stattrak" checked /><span>StatTrak™</span></label>
+            <label><input type="checkbox" value="souvenir" checked /><span>Souvenir</span></label>
           </div>
         </div>
 
@@ -93,8 +93,8 @@
 
       <section class="empty-welcome" id="welcomeState">
         <div class="welcome-icon">⌕</div>
-        <h2>Каталог готов к поиску</h2>
-        <p>Выберите скин из подсказок, чтобы увидеть качества и варианты.</p>
+        <h2>Начните с названия</h2>
+        <p>Например: Redline, Doppler или Asiimov.</p>
       </section>
     </main>
 

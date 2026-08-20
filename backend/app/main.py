@@ -6,12 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .catalog import catalogue_size, get_catalog_filters, get_skin, search_skins
+from .market_data import get_csfloat_prices, get_csfloat_variant_details
 from .mock_data import get_mock_prices
 from .models import CalculationRequest, CatalogueSearchResult
 from .profit import calculate_profit
 
 load_dotenv()
-app = FastAPI(title="trueROI API", version="0.2.0")
+app = FastAPI(title="trueROI API", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,6 +48,21 @@ def skin_details(skin_id: str):
     if skin is None:
         raise HTTPException(status_code=404, detail="Скин не найден")
     return skin
+
+
+@app.get("/api/skins/{skin_id}/market/csfloat")
+def skin_csfloat_prices(skin_id: str):
+    if get_skin(skin_id) is None:
+        raise HTTPException(status_code=404, detail="Скин не найден")
+    return get_csfloat_prices(skin_id)
+
+
+@app.get("/api/variants/{variant_id}/market/csfloat")
+def variant_csfloat_details(variant_id: str):
+    details = get_csfloat_variant_details(variant_id)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Вариант скина не найден")
+    return details
 
 
 @app.get("/api/market-overview")

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -7,6 +9,11 @@ class MarketPrice(BaseModel):
     marketplace: str
     price_cents: int = Field(ge=0)
     item_url: str
+    listing_id: str | None = None
+    float_value: float | None = None
+    quantity: int | None = Field(default=None, ge=0)
+    fetched_at: datetime | None = None
+    stale: bool = False
 
 
 class SkinSearchResult(BaseModel):

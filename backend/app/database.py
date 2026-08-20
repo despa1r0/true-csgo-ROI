@@ -83,4 +83,51 @@ def ensure_schema(connection: Connection) -> None:
     connection.execute(
         "CREATE INDEX IF NOT EXISTS skin_variants_skin_idx ON skin_variants (skin_id)"
     )
-
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS marketplace_listings (
+            marketplace TEXT NOT NULL,
+            variant_id TEXT NOT NULL REFERENCES skin_variants(id) ON DELETE CASCADE,
+            listing_id TEXT,
+            price_cents INTEGER CHECK (price_cents >= 0),
+            item_url TEXT,
+            float_value DOUBLE PRECISION,
+            quantity INTEGER CHECK (quantity >= 0),
+            is_available BOOLEAN NOT NULL DEFAULT FALSE,
+            fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (marketplace, variant_id)
+        )
+        """
+    )
+    connection.execute(
+        "ALTER TABLE marketplace_listings "
+        "ADD COLUMN IF NOT EXISTS quantity INTEGER CHECK (quantity >= 0)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS marketplace_listings_fetched_idx "
+        "ON marketplace_listings (marketplace, fetched_at)"
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS marketplace_syncs (
+            marketplace TEXT PRIMARY KEY,
+            fetched_at TIMESTAMPTZ NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS marketplace_variant_details (
+            marketplace TEXT NOT NULL,
+            variant_id TEXT NOT NULL REFERENCES skin_variants(id) ON DELETE CASCADE,
+            sales_count INTEGER CHECK (sales_count >= 0),
+            liquidity_score INTEGER CHECK (liquidity_score BETWEEN 0 AND 100),
+            liquidity_label TEXT,
+            listings JSONB NOT NULL DEFAULT '[]'::JSONB,
+            listings_error TEXT,
+            sales_error TEXT,
+            fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (marketplace, variant_id)
+        )
+        """
+    )

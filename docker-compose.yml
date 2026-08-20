@@ -30,6 +30,8 @@ services:
     environment:
       DATABASE_URL: postgresql://true_roi:true_roi@db:5432/true_roi
       CSFLOAT_API_KEY: ${CSFLOAT_API_KEY:-}
+      CSFLOAT_CACHE_TTL_SECONDS: ${CSFLOAT_CACHE_TTL_SECONDS:-300}
+      CSFLOAT_DETAILS_TTL_SECONDS: ${CSFLOAT_DETAILS_TTL_SECONDS:-120}
     ports:
       - "8000:8000"
     depends_on:

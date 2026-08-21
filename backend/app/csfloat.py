@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from decimal import Decimal, ROUND_HALF_UP
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
@@ -11,6 +12,7 @@ CSFLOAT_LISTINGS_URL = "https://csfloat.com/api/v1/listings"
 CSFLOAT_PRICE_LIST_URL = f"{CSFLOAT_LISTINGS_URL}/price-list"
 CSFLOAT_HISTORY_URL = "https://csfloat.com/api/v1/history"
 CSFLOAT_ITEM_URL = "https://csfloat.com/item"
+CSFLOAT_SORTS = {"best_deal", "lowest_price"}
 
 
 class CsfloatRequestError(Exception):
@@ -171,6 +173,7 @@ def get_active_listings(
                 "paint_seed": _integer_or_none(item.get("paint_seed")),
                 "paint_index": _integer_or_none(item.get("paint_index")),
                 "stickers": _normalize_stickers(item.get("stickers")),
+                "charms": _normalize_keychains(item.get("keychains")),
                 "seller_name": seller.get("username"),
                 "seller_online": seller.get("online"),
                 "created_at": raw_listing.get("created_at"),
@@ -178,6 +181,110 @@ def get_active_listings(
             }
         )
     return listings
+
+
+def search_market_listings(
+    *,
+    paint_index: int,
+    sort_by: str = "best_deal",
+    category: int = 0,
+    min_float: float | None = None,
+    max_float: float | None = None,
+    min_price_cents: int | None = None,
+    max_price_cents: int | None = None,
+    limit: int = 30,
+) -> list[dict[str, object]]:
+    """Search and normalize CSFloat listings for one paint kit."""
+    if sort_by not in CSFLOAT_SORTS:
+        raise ValueError(f"Unsupported CSFloat sort: {sort_by}")
+    query: dict[str, object] = {
+        "paint_index": paint_index,
+        "sort_by": sort_by,
+        "category": category,
+        "type": "buy_now",
+        "limit": min(max(limit, 1), 50),
+    }
+    optional = {
+        "min_float": min_float,
+        "max_float": max_float,
+        "min_price": min_price_cents,
+        "max_price": max_price_cents,
+    }
+    query.update({key: value for key, value in optional.items() if value is not None})
+    payload = _authenticated_get(
+        f"{CSFLOAT_LISTINGS_URL}?{urlencode(query)}",
+        error_message="Не удалось получить каталог листингов CSFloat",
+    )
+    if isinstance(payload, dict):
+        payload = payload.get("data")
+    if not isinstance(payload, list):
+        raise CsfloatRequestError("CSFloat вернул неожиданный формат листингов")
+
+    listings = []
+    for raw_listing in payload:
+        listing = _normalize_market_listing(raw_listing)
+        if listing is not None:
+            listings.append(listing)
+    return listings
+
+
+def get_listing(listing_id: str) -> dict[str, object] | None:
+    """Return one normalized listing so dependent checks use its real properties."""
+    payload = _authenticated_get(
+        f"{CSFLOAT_LISTINGS_URL}/{quote(str(listing_id), safe='')}",
+        error_message="Не удалось получить выбранный лот CSFloat",
+    )
+    if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+        payload = payload["data"]
+    return _normalize_market_listing(payload)
+
+
+def _normalize_market_listing(raw_listing: object) -> dict[str, object] | None:
+    if not isinstance(raw_listing, dict):
+        return None
+    listing_id = raw_listing.get("id")
+    price_cents = _integer_or_none(raw_listing.get("price"))
+    item = raw_listing.get("item")
+    if not isinstance(listing_id, (str, int)) or price_cents is None or price_cents < 0:
+        return None
+    if not isinstance(item, dict):
+        return None
+    reference = raw_listing.get("reference")
+    if not isinstance(reference, dict):
+        reference = {}
+    predicted_price = _integer_or_none(reference.get("predicted_price"))
+    deal_percent = None
+    if predicted_price and predicted_price > 0:
+        deal = (
+            (Decimal(predicted_price) - Decimal(price_cents))
+            / Decimal(predicted_price)
+            * Decimal("100")
+        )
+        deal_percent = float(deal.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+    return {
+        "listing_id": str(listing_id),
+        "item_url": f"{CSFLOAT_ITEM_URL}/{listing_id}",
+        "price_cents": price_cents,
+        "min_offer_price_cents": _integer_or_none(raw_listing.get("min_offer_price")),
+        "created_at": raw_listing.get("created_at"),
+        "market_hash_name": item.get("market_hash_name"),
+        "item_name": item.get("item_name"),
+        "wear_name": item.get("wear_name"),
+        "collection": item.get("collection"),
+        "image_url": _https_url_or_none(item.get("icon_url")),
+        "float_value": _number_or_none(item.get("float_value")),
+        "paint_seed": _integer_or_none(item.get("paint_seed")),
+        "paint_index": _integer_or_none(item.get("paint_index")),
+        "stattrak": bool(item.get("is_stattrak")),
+        "souvenir": bool(item.get("is_souvenir")),
+        "stickers": _normalize_stickers(item.get("stickers")),
+        "charms": _normalize_keychains(item.get("keychains")),
+        "predicted_price_cents": predicted_price,
+        "base_price_cents": _integer_or_none(reference.get("base_price")),
+        "deal_percent": deal_percent,
+        "reference_quantity": _integer_or_none(reference.get("quantity")),
+        "reference_updated_at": reference.get("last_updated"),
+    }
 
 
 def get_sales_history(market_hash_name: str) -> list[dict[str, object]]:
@@ -209,7 +316,46 @@ def get_sales_history(market_hash_name: str) -> list[dict[str, object]]:
                 ),
             }
         )
+    sales.sort(key=lambda sale: str(sale.get("sold_at") or ""), reverse=True)
     return sales
+
+
+def get_buy_orders(listing_id: str, *, limit: int = 10) -> list[dict[str, object]]:
+    """Return normalized buy orders currently matching one concrete listing.
+
+    CSFloat evaluates float and other hybrid conditions against a listing, so
+    the listing id is intentionally required instead of only a market name.
+    """
+    payload = _authenticated_get(
+        f"{CSFLOAT_LISTINGS_URL}/{quote(str(listing_id), safe='')}/buy-orders?"
+        f"{urlencode({'limit': min(max(limit, 1), 10)})}",
+        error_message="Не удалось получить заявки на покупку CSFloat",
+    )
+    if isinstance(payload, dict):
+        payload = payload.get("data") or payload.get("orders")
+    if not isinstance(payload, list):
+        raise CsfloatRequestError("CSFloat вернул неожиданный формат заявок")
+
+    orders: list[dict[str, object]] = []
+    for raw_order in payload[:10]:
+        if not isinstance(raw_order, dict):
+            continue
+        price_cents = _integer_or_none(raw_order.get("price"))
+        quantity = _integer_or_none(raw_order.get("qty", raw_order.get("quantity")))
+        if price_cents is None or price_cents < 0 or quantity is None or quantity < 1:
+            continue
+        properties = raw_order.get("hybrid_properties")
+        if not isinstance(properties, dict):
+            properties = {}
+        orders.append(
+            {
+                "price_cents": price_cents,
+                "quantity": quantity,
+                "min_float": _number_or_none(properties.get("min_float")),
+                "max_float": _number_or_none(properties.get("max_float")),
+            }
+        )
+    return orders
 
 
 def _authenticated_get(url: str, *, error_message: str):
@@ -245,14 +391,55 @@ def _normalize_stickers(value: object) -> list[dict[str, object]]:
     for sticker in value:
         if not isinstance(sticker, dict):
             continue
+        reference = sticker.get("reference")
+        if not isinstance(reference, dict):
+            reference = {}
+        steam_reference = sticker.get("scm")
+        if not isinstance(steam_reference, dict):
+            steam_reference = {}
         stickers.append(
             {
                 "name": sticker.get("name") or "Стикер",
                 "slot": _integer_or_none(sticker.get("slot")),
                 "wear": _number_or_none(sticker.get("wear")),
+                "icon_url": _https_url_or_none(sticker.get("icon_url")),
+                "csfloat_price_cents": _integer_or_none(reference.get("price")),
+                "csfloat_quantity": _integer_or_none(reference.get("quantity")),
+                "price_updated_at": reference.get("updated_at"),
+                "steam_price_cents": _integer_or_none(steam_reference.get("price")),
             }
         )
     return stickers
+
+
+def _normalize_keychains(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    keychains = []
+    for keychain in value:
+        if not isinstance(keychain, dict):
+            continue
+        reference = keychain.get("reference")
+        if not isinstance(reference, dict):
+            reference = {}
+        keychains.append(
+            {
+                "name": keychain.get("name") or "Charm",
+                "slot": _integer_or_none(keychain.get("slot")),
+                "pattern": _integer_or_none(keychain.get("pattern")),
+                "icon_url": _https_url_or_none(keychain.get("icon_url")),
+                "csfloat_price_cents": _integer_or_none(reference.get("price")),
+                "csfloat_quantity": _integer_or_none(reference.get("quantity")),
+                "price_updated_at": reference.get("updated_at"),
+            }
+        )
+    return keychains
+
+
+def _https_url_or_none(value: object) -> str | None:
+    if isinstance(value, str) and value.startswith("https://"):
+        return value
+    return None
 
 
 def _integer_or_none(value: object) -> int | None:

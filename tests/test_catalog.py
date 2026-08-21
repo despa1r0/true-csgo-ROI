@@ -1,4 +1,9 @@
-from backend.app.seed_catalog import base_skin_name, prepare_catalog
+from backend.app.catalog import _search_tokens
+from backend.app.seed_catalog import (
+    base_skin_name,
+    prepare_catalog,
+    prepare_skin_collections,
+)
 
 
 def source_item(**overrides):
@@ -45,3 +50,31 @@ def test_groups_source_variants_under_one_skin():
     assert skins[0]["name"] == "AK-47 | Redline"
     assert skins[0]["has_stattrak"] is True
     assert len(variants) == 2
+
+
+def test_search_tokens_ignore_item_name_separators():
+    assert _search_tokens("  AWP   | As  ") == ["AWP", "As"]
+
+
+def test_flattens_grouped_skin_collections():
+    grouped = [
+        {
+            "id": "skin-1",
+            "collections": [
+                {
+                    "id": "collection-set-phoenix",
+                    "name": "The Phoenix Collection",
+                    "image": "https://example.test/phoenix.png",
+                }
+            ],
+        }
+    ]
+
+    assert prepare_skin_collections(grouped) == [
+        {
+            "skin_id": "skin-1",
+            "collection_id": "collection-set-phoenix",
+            "collection_name": "The Phoenix Collection",
+            "image_url": "https://example.test/phoenix.png",
+        }
+    ]

@@ -3,113 +3,106 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Поиск скинов Counter-Strike 2 по локальному каталогу" />
-    <title>trueROI — поиск CS2 скинов</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <meta name="description" content="Поиск скинов CS2 и аналитика лотов CSFloat" />
+    <title>trueROI — CS2 market data</title>
+    <link rel="stylesheet" href="/styles.css?v=0.8.0" />
   </head>
   <body>
     <header class="site-header">
       <a class="brand" href="/" aria-label="trueROI — на главную">
-        <span class="brand-mark">tR</span>
-        <span>true<span>ROI</span></span>
+        <span class="brand-mark">tR</span><span>true<span>ROI</span></span>
       </a>
-      <span class="catalog-status" id="catalogStatus">Каталог загружается…</span>
+      <div class="header-meta"><span class="source-label">CSFloat</span><span id="catalogStatus" class="catalog-status">Подключение…</span></div>
     </header>
 
-    <main>
-      <section class="hero" aria-labelledby="pageTitle">
-        <p class="eyebrow">CS2 MARKET DATA</p>
-        <h1 id="pageTitle">Поиск скинов без лишнего шума</h1>
-        <p class="lead">Каталог, цены CSFloat и детали лотов в одном спокойном интерфейсе.</p>
-
+    <main class="app-shell">
+      <section class="search-panel" aria-label="Поиск по каталогу">
         <div class="search-shell" id="searchShell">
           <div class="search-row">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.4a7.75 7.75 0 1 1-15.5 0 7.75 7.75 0 0 1 15.5 0Z"/></svg>
-            <input
-              id="searchInput"
-              type="search"
-              placeholder="Например, AK-47 | Redline"
-              autocomplete="off"
-              aria-label="Название скина"
-              aria-controls="suggestions"
-              aria-expanded="false"
-            />
-            <span class="shortcut" aria-hidden="true">/</span>
+            <input id="searchInput" type="search" placeholder="AWP Asiimov, Redline, Doppler…" autocomplete="off"
+              aria-label="Название скина" aria-controls="suggestions" aria-expanded="false" />
+            <kbd aria-hidden="true">/</kbd>
           </div>
-
           <div class="suggestions" id="suggestions" role="listbox" hidden></div>
         </div>
-
-        <div class="filters" aria-label="Фильтры каталога">
-          <label class="select-chip">
-            <span class="chip-label">Оружие</span>
-            <select id="weaponFilter"><option value="">Любое</option></select>
-          </label>
-          <label class="select-chip">
-            <span class="chip-label">Редкость</span>
-            <select id="rarityFilter"><option value="">Любая</option></select>
-          </label>
-          <button class="reset-button filter-chip" id="resetFilters" type="button">Сбросить всё</button>
+        <div class="catalog-filters" aria-label="Фильтры локального каталога">
+          <label><span>Оружие</span><select id="weaponFilter"><option value="">Любое</option></select></label>
+          <label><span>Редкость</span><select id="rarityFilter"><option value="">Любая</option></select></label>
+          <label><span>Коллекция</span><select id="collectionFilter"><option value="">Любая</option></select></label>
         </div>
-
-        <p class="search-hint" id="searchHint">Введите минимум 2 символа</p>
+        <p class="search-hint" id="searchHint">Введите минимум 2 символа или выберите фильтр</p>
       </section>
 
-      <section class="skin-view" id="skinView" hidden aria-live="polite">
-        <article class="skin-overview">
-          <div class="skin-image-wrap">
+      <section class="market-view" id="marketView" hidden aria-live="polite">
+        <div class="market-heading">
+          <div class="selected-skin">
             <img id="skinImage" alt="" />
+            <div><p id="skinMeta"></p><h1 id="skinName"></h1><small id="skinCollection"></small></div>
           </div>
-          <div class="skin-copy">
-            <div class="skin-meta">
-              <span id="skinWeapon"></span>
-              <span class="rarity" id="skinRarity"></span>
-            </div>
-            <h2 id="skinName"></h2>
-            <p id="skinDescription"></p>
-            <dl>
-              <div><dt>Float</dt><dd id="skinFloat"></dd></div>
-              <div><dt>Paint index</dt><dd id="skinPaint"></dd></div>
-            </dl>
-          </div>
-        </article>
-
-        <div class="quality-header">
-          <div>
-            <p class="eyebrow">MARKET OVERVIEW</p>
-            <h2>Рынок по качеству</h2>
-            <p class="section-note">Нажмите на блок, чтобы увидеть метрики и первые 10 лотов.</p>
-          </div>
-          <div class="variant-filters" id="variantFilters" aria-label="Тип варианта">
-            <label><input type="checkbox" value="normal" checked /><span>Обычный</span></label>
-            <label><input type="checkbox" value="stattrak" checked /><span>StatTrak™</span></label>
-            <label><input type="checkbox" value="souvenir" checked /><span>Souvenir</span></label>
-          </div>
+          <div class="market-state"><span>CSFLOAT MARKET</span><strong id="marketStatus">Ожидание</strong></div>
         </div>
-
+        <div class="quality-heading">
+          <div><span>КАЧЕСТВО</span><h2>Выберите степень износа</h2></div>
+          <p>После выбора откроются конкретные листинги этого качества.</p>
+        </div>
         <div class="quality-grid" id="qualityGrid"></div>
-        <p class="empty-state" id="qualityEmpty" hidden>Для выбранных фильтров вариантов нет.</p>
-      </section>
-
-      <section class="empty-welcome" id="welcomeState">
-        <div class="welcome-icon">⌕</div>
-        <h2>Начните с названия</h2>
-        <p>Например: Redline, Doppler или Asiimov.</p>
+        <div class="listings-message" id="qualityMessage" hidden></div>
       </section>
     </main>
 
+    <dialog class="listing-modal" id="listingModal">
+      <button class="modal-close" id="modalClose" type="button" aria-label="Закрыть">×</button>
+
+      <section class="modal-browser" id="modalBrowser">
+        <header class="browser-heading">
+          <div><p id="browserOverline">CSFLOAT · ЛИСТИНГИ</p><h2 id="browserTitle"></h2><span id="browserSubtitle"></span></div>
+          <span class="result-count" id="resultCount"></span>
+        </header>
+        <div class="market-toolbar">
+          <label class="sort-control"><span>Сортировка</span>
+            <select id="sortSelect"><option value="best_deal">Лучшие сделки CSFloat</option><option value="lowest_price">Сначала дешевле</option></select>
+          </label>
+          <button class="filter-toggle" id="filterToggle" type="button" aria-expanded="false">⌁ Фильтры <strong id="activeFilterCount" hidden>0</strong></button>
+        </div>
+        <form class="market-filters" id="marketFilters" hidden>
+          <label><span>Вариант</span>
+            <select id="variantFilter"><option value="any">Любой</option><option value="normal">Обычный</option><option value="stattrak">StatTrak™</option><option value="souvenir">Souvenir</option></select>
+          </label>
+          <fieldset class="range-field"><legend>Float</legend>
+            <input id="minFloat" type="number" min="0" max="1" step="0.0001" placeholder="от 0.00" aria-label="Минимальный float" /><span>—</span>
+            <input id="maxFloat" type="number" min="0" max="1" step="0.0001" placeholder="до 1.00" aria-label="Максимальный float" />
+          </fieldset>
+          <fieldset class="range-field"><legend>Цена, USD</legend>
+            <input id="minPrice" type="number" min="0" step="0.01" placeholder="от" aria-label="Минимальная цена" /><span>—</span>
+            <input id="maxPrice" type="number" min="0" step="0.01" placeholder="до" aria-label="Максимальная цена" />
+          </fieldset>
+          <div class="boolean-filters">
+            <label><input id="hasStickers" type="checkbox" /><span>Только с наклейками</span></label>
+            <label><input id="hasCharm" type="checkbox" /><span>Только с charm</span></label>
+          </div>
+          <div class="filter-actions"><button class="secondary-button" id="resetMarketFilters" type="button">Сбросить</button><button class="primary-button" type="submit">Показать</button></div>
+          <p class="filter-error" id="filterError" hidden></p>
+        </form>
+        <div class="listing-grid modal-listing-grid" id="listingGrid"></div>
+        <div class="listings-message" id="listingsMessage" hidden></div>
+      </section>
+
+      <section class="modal-detail" id="modalDetail" hidden>
+        <button class="detail-back" id="detailBack" type="button">← Все листинги качества</button>
+        <div class="modal-layout">
+          <aside class="modal-listing" id="modalListing"></aside>
+          <section class="modal-analytics" id="modalAnalytics"></section>
+        </div>
+      </section>
+    </dialog>
+
     <template id="suggestionTemplate">
       <button class="suggestion" type="button" role="option">
-        <span class="suggestion-image"><img alt="" loading="lazy" /></span>
-        <span class="suggestion-copy">
-          <strong></strong>
-          <small><span class="suggestion-weapon"></span><span class="dot">·</span><span class="suggestion-variants"></span></small>
-        </span>
-        <span class="rarity-line"></span>
-        <span class="arrow">→</span>
+        <span class="rarity-line"></span><span class="suggestion-image"><img alt="" loading="lazy" /></span>
+        <span class="suggestion-copy"><strong></strong><small></small></span><span class="arrow">↗</span>
       </button>
     </template>
-
-    <script src="/app.js" defer></script>
+    <script src="/app.js?v=0.8.0" defer></script>
   </body>
 </html>

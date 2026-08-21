@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 from typing import Any
 
 from .database import get_connection
@@ -22,22 +23,59 @@ def search_skins(
     *,
     weapon: str | None = None,
     rarity: str | None = None,
+    collection: str | None = None,
     limit: int = 8,
 ) -> list[dict[str, Any]]:
-    normalized = query.strip()
-    if len(normalized) < 2:
+    normalized = " ".join(query.strip().split())
+    if normalized and len(normalized) < 2:
+        return []
+    if not normalized and not any((weapon, rarity, collection)):
         return []
 
-    conditions = ["s.name ILIKE %s"]
-    parameters: list[Any] = [f"%{normalized}%"]
+    # Item names contain separators such as ``|`` and ``-``. Searching each
+    # meaningful token independently makes "AWP As" match "AWP | Asiimov"
+    # without weakening the query to a broad OR search.
+    tokens = _search_tokens(normalized) if normalized else []
+    if normalized and not tokens:
+        return []
+
+    conditions: list[str] = []
+    parameters: list[Any] = []
+    if len(tokens) == 1:
+        conditions.append("s.name ILIKE %s")
+        parameters.append(f"%{tokens[0]}%")
+    elif tokens:
+        # In a multi-word query every term starts a word. This avoids matching
+        # "AWP As" against "AWP | Hyper Beast" through the middle of "Beast".
+        conditions = ["s.name ~* %s" for _token in tokens]
+        parameters = [rf"\m{re.escape(token)}" for token in tokens]
     if weapon:
         conditions.append("s.weapon_id = %s")
         parameters.append(weapon)
     if rarity:
         conditions.append("s.rarity_id = %s")
         parameters.append(rarity)
+    if collection:
+        conditions.append(
+            "EXISTS (SELECT 1 FROM skin_collections sc "
+            "WHERE sc.skin_id = s.id AND sc.collection_id = %s)"
+        )
+        parameters.append(collection)
 
-    parameters.extend([normalized.casefold(), f"{normalized}%", limit])
+    if normalized:
+        order_by = """
+            CASE WHEN LOWER(s.name) = %s THEN 0
+                 WHEN s.name ILIKE %s THEN 1
+                 ELSE 2 END,
+            similarity(LOWER(s.name), %s) DESC,
+            s.name
+        """
+        parameters.extend(
+            [normalized.casefold(), f"{normalized}%", normalized.casefold()]
+        )
+    else:
+        order_by = "s.name"
+    parameters.append(limit)
     sql = f"""
         SELECT
             s.id,
@@ -57,19 +95,16 @@ def search_skins(
         LEFT JOIN skin_variants v ON v.skin_id = s.id
         WHERE {' AND '.join(conditions)}
         GROUP BY s.id
-        ORDER BY
-            CASE WHEN LOWER(s.name) = %s THEN 0
-                 WHEN s.name ILIKE %s THEN 1
-                 ELSE 2 END,
-            similarity(LOWER(s.name), %s) DESC,
-            s.name
+        ORDER BY {order_by}
         LIMIT %s
     """
-    # The third ranking parameter is the normalized query again.
-    parameters.insert(-1, normalized.casefold())
-
     with get_connection() as connection:
         return list(connection.execute(sql, parameters).fetchall())
+
+
+def _search_tokens(query: str) -> list[str]:
+    """Return stable search terms while treating item punctuation as separators."""
+    return re.findall(r"[\w™+]+", query, flags=re.UNICODE)
 
 
 def get_skin(skin_id: str) -> dict[str, Any] | None:
@@ -99,6 +134,17 @@ def get_skin(skin_id: str) -> dict[str, Any] | None:
                 (skin_id,),
             ).fetchall()
         )
+        collections = list(
+            connection.execute(
+                """
+                SELECT collection_id AS id, collection_name AS name, image_url
+                FROM skin_collections
+                WHERE skin_id = %s
+                ORDER BY collection_name
+                """,
+                (skin_id,),
+            ).fetchall()
+        )
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for variant in variants:
@@ -112,6 +158,7 @@ def get_skin(skin_id: str) -> dict[str, Any] | None:
     ]
     result = dict(skin)
     result["qualities"] = qualities
+    result["collections"] = collections
     return result
 
 
@@ -140,7 +187,19 @@ def get_catalog_filters() -> dict[str, list[dict[str, Any]]]:
                 """
             ).fetchall()
         )
-    return {"weapons": weapons, "rarities": rarities}
+        collections = list(
+            connection.execute(
+                """
+                SELECT collection_id AS id, collection_name AS name,
+                       COUNT(DISTINCT skin_id)::INTEGER AS count,
+                       MAX(image_url) AS image_url
+                FROM skin_collections
+                GROUP BY collection_id, collection_name
+                ORDER BY collection_name
+                """
+            ).fetchall()
+        )
+    return {"weapons": weapons, "rarities": rarities, "collections": collections}
 
 
 def catalogue_size() -> dict[str, int]:

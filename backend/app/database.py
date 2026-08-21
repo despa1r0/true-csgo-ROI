@@ -85,6 +85,21 @@ def ensure_schema(connection: Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS skin_collections (
+            skin_id TEXT NOT NULL REFERENCES skins(id) ON DELETE CASCADE,
+            collection_id TEXT NOT NULL,
+            collection_name TEXT NOT NULL,
+            image_url TEXT,
+            PRIMARY KEY (skin_id, collection_id)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS skin_collections_collection_idx "
+        "ON skin_collections (collection_id, skin_id)"
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS marketplace_listings (
             marketplace TEXT NOT NULL,
             variant_id TEXT NOT NULL REFERENCES skin_variants(id) ON DELETE CASCADE,
@@ -124,10 +139,30 @@ def ensure_schema(connection: Connection) -> None:
             liquidity_score INTEGER CHECK (liquidity_score BETWEEN 0 AND 100),
             liquidity_label TEXT,
             listings JSONB NOT NULL DEFAULT '[]'::JSONB,
+            sales JSONB NOT NULL DEFAULT '[]'::JSONB,
+            buy_orders JSONB NOT NULL DEFAULT '[]'::JSONB,
             listings_error TEXT,
             sales_error TEXT,
+            buy_orders_error TEXT,
+            details_version SMALLINT NOT NULL DEFAULT 1,
             fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (marketplace, variant_id)
         )
         """
+    )
+    connection.execute(
+        "ALTER TABLE marketplace_variant_details "
+        "ADD COLUMN IF NOT EXISTS sales JSONB NOT NULL DEFAULT '[]'::JSONB"
+    )
+    connection.execute(
+        "ALTER TABLE marketplace_variant_details "
+        "ADD COLUMN IF NOT EXISTS buy_orders JSONB NOT NULL DEFAULT '[]'::JSONB"
+    )
+    connection.execute(
+        "ALTER TABLE marketplace_variant_details "
+        "ADD COLUMN IF NOT EXISTS buy_orders_error TEXT"
+    )
+    connection.execute(
+        "ALTER TABLE marketplace_variant_details "
+        "ADD COLUMN IF NOT EXISTS details_version SMALLINT NOT NULL DEFAULT 1"
     )

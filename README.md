@@ -1,6 +1,6 @@
 # trueROI
 
-Локальный каталог скинов Counter-Strike 2 с быстрым поиском, превью и вариантами качества. Каталог берётся из [ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) и хранится в PostgreSQL.
+Локальный каталог скинов Counter-Strike 2 с быстрым поиском и витриной реальных лотов CSFloat. Каталог берётся из [ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) и хранится в PostgreSQL.
 
 ## Быстрый запуск
 
@@ -14,7 +14,7 @@
 импорт каталога и приложение одной командой. Если `.env` ещё нет, он создаст его
 из `.env.example` и попросит добавить `CSFLOAT_API_KEY`.
 
-Первый запуск скачает актуальный `skins_not_grouped.json`, создаст схему и заполнит БД. После сообщения `Catalogue is ready` откройте:
+Первый запуск скачает актуальные `skins_not_grouped.json` и `skins.json`, создаст схему, импортирует варианты и коллекции. После сообщения `Catalogue is ready` откройте:
 
 ```text
 http://localhost:8000
@@ -37,14 +37,18 @@ docker compose down -v
 ## Что доступно
 
 - автоподсказки по названию с превью;
-- фильтры по оружию и редкости;
-- карточка скина с float-диапазоном и paint index;
-- компактные фильтры-теги по оружию, редкости и типу варианта;
-- раскрываемые блоки Factory New, Minimal Wear, Field-Tested, Well-Worn и Battle-Scarred;
-- переключение обычных, StatTrak™ и Souvenir вариантов внутри блока;
-- минимальная цена активных лотов CSFloat для каждого варианта;
-- переход по цене на страницу лотов этого варианта на CSFloat;
-- до 10 активных лотов с ценой, float, paint seed/index и стикерами;
+- компактные фильтры локального каталога по оружию, редкости и коллекции;
+- отдельные крупные карточки Factory New, Minimal Wear, Field-Tested, Well-Worn и Battle-Scarred;
+- список конкретных активных лотов CSFloat открывается поверх сайта после выбора качества;
+- сортировки «Лучшие сделки CSFloat» и «Сначала дешевле»;
+- серверные фильтры CSFloat по float, варианту и диапазону цены;
+- фильтры «только с наклейками» и «только с charm»;
+- подробная аналитика открывается при нажатии на конкретный лот;
+- цена и справочная оценка CSFloat на карточке лота;
+- до 10 активных лотов с ценой, float, paint seed/index и изображениями стикеров;
+- цена стикера на CSFloat во всплывающей карточке;
+- текущие заявки на покупку и цена быстрой продажи;
+- последние продажи с датой, ценой и float;
 - количество продаж в доступной истории и beta-оценка ликвидности;
 - кэш цен в PostgreSQL (по умолчанию 5 минут) и последняя сохранённая цена при временном сбое CSFloat;
 - Swagger API: `http://localhost:8000/docs`.
@@ -54,30 +58,39 @@ docker compose down -v
 ```text
 GET /api/health
 GET /api/catalog/filters
-GET /api/skins/search?q=redline&weapon=weapon_ak47&rarity=rarity_mythical_weapon
+GET /api/skins/search?q=redline&weapon=weapon_ak47&rarity=rarity_mythical_weapon&collection=collection-set-community-2
 GET /api/skins/{skin_id}
 GET /api/skins/{skin_id}/market/csfloat
+GET /api/skins/{skin_id}/market/csfloat/listings?sort_by=best_deal&wear=field-tested&variant=normal&has_stickers=true&has_charm=false
+GET /api/listings/{listing_id}/market/csfloat/quick-sell
 GET /api/variants/{variant_id}/market/csfloat
 ```
 
-Поиск работает по таблице `skins`, а качества — по `skin_variants`. В обеих таблицах сохраняется `raw_data JSONB`, поэтому новые поля источника можно подключать постепенно.
+Поиск работает по таблице `skins`, качества — по `skin_variants`, а связь с коллекциями — по `skin_collections`. В таблицах скинов и вариантов сохраняется `raw_data JSONB`, поэтому новые поля источника можно подключать постепенно.
 CSFloat сопоставляется с вариантами по точному `skin_variants.market_hash_name`.
 Последняя минимальная цена хранится в `marketplace_listings`; отсутствие активных
 лотов также кэшируется, чтобы не повторять одинаковые запросы.
 
-Подробный endpoint вызывается лениво — только при раскрытии wear-блока. Его ответ
+Подробный endpoint вызывается лениво — только при открытии модального окна лота. Его ответ
 хранится в `marketplace_variant_details` 120 секунд и содержит максимум 10
-активных buy-now листингов. Если CSFloat ограничивает endpoint, API возвращает
-сохранённые данные и отдельное безопасное описание ошибки.
+активных buy-now листингов, подходящие buy orders и доступную историю продаж.
+Если CSFloat ограничивает endpoint, API возвращает сохранённые данные и отдельное
+безопасное описание ошибки.
 
-Ликвидность помечена как beta. Это прозрачная внутренняя оценка:
+Ликвидность помечена как beta. Это оценка качества быстрой продажи, а не
+вероятность продажи:
 
 ```text
-liquidity_score = min(100, sales_in_available_history / active_listings * 100)
+score = 65% * price_retention
+      + 25% * near_bid_depth
+      + 10% * sales_velocity
 ```
 
-`sales_in_available_history` — размер выборки, которую в данный момент возвращает
-CSFloat, а не гарантированное полное число продаж за всё время.
+`price_retention` показывает, какую долю минимальной цены сохраняет лучшая заявка
+на покупку. `near_bid_depth` учитывает количество заявок в пределах 5% от лучшей,
+а `sales_velocity` — продажи в день по доступной истории CSFloat. Заявки
+проверяются относительно конкретного активного лота; для инвентарного предмета
+результат может отличаться из-за float и наклеек.
 
 ## Настройка CSFloat
 
@@ -100,7 +113,7 @@ CSFloat загружается одним запросом; частоту об�
 docker compose run --rm catalog-seed
 ```
 
-Источник можно заменить переменной `CATALOG_SOURCE_URL`. Английская версия выбрана намеренно: её `market_hash_name` пригодны для будущего поиска цен на маркетплейсах.
+Источники можно заменить переменными `CATALOG_SOURCE_URL` и `CATALOG_GROUPED_SOURCE_URL`. Английская версия выбрана намеренно: её `market_hash_name` пригодны для точного поиска цен на маркетплейсах.
 
 ## Тесты
 

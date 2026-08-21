@@ -17,6 +17,10 @@ DEFAULT_SOURCE_URL = (
     "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/"
     "public/api/en/skins_not_grouped.json"
 )
+DEFAULT_GROUPED_SOURCE_URL = (
+    "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/"
+    "public/api/en/skins.json"
+)
 
 
 def download_catalog(url: str) -> list[dict[str, Any]]:
@@ -99,8 +103,39 @@ def prepare_catalog(
     return list(skins.values()), variants
 
 
-def import_catalog(items: list[dict[str, Any]]) -> tuple[int, int]:
+def prepare_skin_collections(
+    grouped_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Flatten the grouped catalogue's collection metadata for PostgreSQL."""
+    rows: list[dict[str, Any]] = []
+    for item in grouped_items:
+        skin_id = item.get("id")
+        if not skin_id:
+            continue
+        for collection in item.get("collections") or []:
+            if not isinstance(collection, dict):
+                continue
+            collection_id = collection.get("id")
+            collection_name = collection.get("name")
+            if not collection_id or not collection_name:
+                continue
+            rows.append(
+                {
+                    "skin_id": skin_id,
+                    "collection_id": collection_id,
+                    "collection_name": collection_name,
+                    "image_url": collection.get("image"),
+                }
+            )
+    return rows
+
+
+def import_catalog(
+    items: list[dict[str, Any]],
+    grouped_items: list[dict[str, Any]] | None = None,
+) -> tuple[int, int]:
     skins, variants = prepare_catalog(items)
+    collections = prepare_skin_collections(grouped_items or [])
     if not skins or not variants:
         raise ValueError("The downloaded catalogue contains no usable skins")
 
@@ -171,6 +206,23 @@ def import_catalog(items: list[dict[str, Any]]) -> tuple[int, int]:
                     for variant in variants
                 ],
             )
+            if grouped_items is not None:
+                cursor.execute("DELETE FROM skin_collections")
+            if collections:
+                cursor.executemany(
+                    """
+                    INSERT INTO skin_collections (
+                        skin_id, collection_id, collection_name, image_url
+                    ) VALUES (
+                        %(skin_id)s, %(collection_id)s, %(collection_name)s,
+                        %(image_url)s
+                    )
+                    ON CONFLICT (skin_id, collection_id) DO UPDATE SET
+                        collection_name = EXCLUDED.collection_name,
+                        image_url = EXCLUDED.image_url
+                    """,
+                    collections,
+                )
         connection.execute(
             "DELETE FROM skin_variants WHERE NOT (id = ANY(%s))",
             ([variant["id"] for variant in variants],),
@@ -179,15 +231,19 @@ def import_catalog(items: list[dict[str, Any]]) -> tuple[int, int]:
             "DELETE FROM skins WHERE NOT (id = ANY(%s))",
             ([skin["id"] for skin in skins],),
         )
-
     return len(skins), len(variants)
 
 
 def main() -> None:
     source_url = os.getenv("CATALOG_SOURCE_URL", DEFAULT_SOURCE_URL)
+    grouped_source_url = os.getenv(
+        "CATALOG_GROUPED_SOURCE_URL", DEFAULT_GROUPED_SOURCE_URL
+    )
     print(f"Downloading skin catalogue from {source_url}", flush=True)
     items = download_catalog(source_url)
-    skin_count, variant_count = import_catalog(items)
+    print(f"Downloading grouped skin metadata from {grouped_source_url}", flush=True)
+    grouped_items = download_catalog(grouped_source_url)
+    skin_count, variant_count = import_catalog(items, grouped_items)
     print(
         f"Catalogue is ready: {skin_count} skins, {variant_count} variants",
         flush=True,

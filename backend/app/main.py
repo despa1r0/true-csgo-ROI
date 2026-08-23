@@ -13,7 +13,7 @@ from .market_data import (
     get_csfloat_skin_listings,
     get_csfloat_variant_details,
 )
-from .mock_data import get_mock_prices
+from .marketplaces_fees import MARKETPLACES
 from .models import CalculationRequest, CatalogueSearchResult
 from .profit import calculate_profit
 
@@ -133,18 +133,69 @@ def listing_csfloat_quick_sell(listing_id: str):
 def get_market_overview():
     return {
         "item_name": "AK-47 | Redline (Field-Tested)",
-        "prices": get_mock_prices(),
-        "default_fees": {
-            "deposit_fee_percent": 0,
-            "sell_fee_percent": 2.0,
-            "withdraw_fee_percent": 0,
-        },
+        "marketplaces": marketplace_options(),
     }
+
+
+def marketplace_options():
+    """Public data for populating buy/sell and fast-buy selectors."""
+    return [
+        {
+            "id": name,
+            "can_buy": marketplace.can_buy,
+            "can_sell": marketplace.can_sell,
+            "supports_fast_buy": marketplace.supports_fast_buy,
+            "deposit_methods": [
+                method
+                for method, rule in marketplace.fees.deposit.items()
+                if rule is not None
+            ],
+            "withdraw_methods": [
+                method
+                for method, rule in marketplace.fees.withdraw.items()
+                if rule is not None
+            ],
+        }
+        for name, marketplace in MARKETPLACES.items()
+    ]
+
+
+@app.get("/api/marketplaces")
+def get_marketplaces():
+    return marketplace_options()
 
 
 @app.post("/api/calculate")
 def post_calculation(request: CalculationRequest):
-    return calculate_profit(**request.model_dump())
+    buy_marketplace = MARKETPLACES.get(request.buy_marketplace)
+    sell_marketplace = MARKETPLACES.get(request.sell_marketplace)
+
+    if buy_marketplace is None:
+        raise HTTPException(status_code=422, detail="Unknown buy marketplace")
+    if sell_marketplace is None:
+        raise HTTPException(status_code=422, detail="Unknown sell marketplace")
+    if not buy_marketplace.can_buy:
+        raise HTTPException(status_code=422, detail="Marketplace does not support buying")
+    if not sell_marketplace.can_sell or sell_marketplace.fees.sell is None:
+        raise HTTPException(status_code=422, detail="Marketplace does not support selling")
+    if request.sell_mode == "fast_buy" and not sell_marketplace.supports_fast_buy:
+        raise HTTPException(status_code=422, detail="Marketplace does not support fast buy")
+
+    deposit_rule = buy_marketplace.fees.deposit.get(request.deposit_method)
+    withdraw_rule = sell_marketplace.fees.withdraw.get(request.withdraw_method)
+    if request.use_deposit_fee and deposit_rule is None:
+        raise HTTPException(status_code=422, detail="Unsupported deposit method")
+    if withdraw_rule is None:
+        raise HTTPException(status_code=422, detail="Unsupported withdrawal method")
+
+    return calculate_profit(
+        buy_price_cents=request.buy_price_cents,
+        sell_price_cents=request.sell_price_cents,
+        deposit_rule=deposit_rule,
+        sell_rule=sell_marketplace.fees.sell,
+        withdraw_rule=withdraw_rule,
+        use_deposit_fee=request.use_deposit_fee,
+    )
 
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"

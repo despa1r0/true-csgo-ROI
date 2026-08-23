@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -45,10 +46,12 @@ class CalculationRequest(BaseModel):
 
     buy_price_cents: int = Field(ge=0)
     sell_price_cents: int = Field(ge=0)
+    buy_marketplace: str
+    sell_marketplace: str
+    deposit_method: Literal["card", "crypto"] = "crypto"
+    withdraw_method: Literal["card", "crypto"] = "crypto"
+    sell_mode: Literal["listing", "fast_buy"] = "listing"
     use_deposit_fee: bool = True
-    deposit_fee_percent: float = Field(default=0, ge=0)
-    sell_fee_percent: float = Field(default=0, ge=0)
-    withdraw_fee_percent: float = Field(default=0, ge=0)
 
 
 class ProfitResult(BaseModel):
@@ -57,5 +60,11 @@ class ProfitResult(BaseModel):
     sell_price_cents: int
     sell_fee_cents: int
     withdraw_fee_cents: int
+    gross_profit_cents: int
+    market_profit_cents: int
     profit_cents: int
+    gross_roi_percent: float
+    market_roi_percent: float
+    cash_roi_percent: float
+    # Backward-compatible name for the main (cash) ROI.
     roi_percent: float

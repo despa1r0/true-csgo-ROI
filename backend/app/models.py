@@ -48,6 +48,7 @@ class CalculationRequest(BaseModel):
     sell_price_cents: int = Field(ge=0)
     buy_marketplace: str
     sell_marketplace: str
+    profit_mode: Literal["raw", "smart", "enhanced", "quick_flip"] = "smart"
     deposit_method: Literal["card", "crypto"] = "crypto"
     withdraw_method: Literal["card", "crypto"] = "crypto"
     sell_mode: Literal["listing", "fast_buy"] = "listing"

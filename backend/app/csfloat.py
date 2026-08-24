@@ -48,8 +48,13 @@ def get_lowest_price(market_hash_name: str) -> MarketPrice | None:
     try:
         listings = _load_json_with_rate_limit_retry(request, timeout=10)
     except HTTPError as error:
-        if error.code in (401, 403):
-            raise CsfloatRequestError("CSFloat отклонил API-ключ") from error
+        if error.code == 401:
+            raise CsfloatRequestError("CSFloat отклонил API-ключ. Пересоздайте ключ в профиле") from error
+        if error.code == 403:
+            raise CsfloatRequestError(
+                "CSFloat требует повторного входа для поиска лотов. "
+                "Войдите в аккаунт и пересоздайте API-ключ"
+            ) from error
         if error.code == 429:
             raise CsfloatRequestError("CSFloat временно ограничил частоту запросов") from error
         raise CsfloatRequestError(f"CSFloat временно недоступен (HTTP {error.code})") from error
@@ -96,8 +101,10 @@ def get_price_index() -> dict[str, dict[str, int]]:
     try:
         payload = _load_json_with_rate_limit_retry(request, timeout=30)
     except HTTPError as error:
-        if error.code in (401, 403):
-            raise CsfloatRequestError("CSFloat отклонил API-ключ") from error
+        if error.code == 401:
+            raise CsfloatRequestError("CSFloat отклонил API-ключ. Пересоздайте ключ в профиле") from error
+        if error.code == 403:
+            raise CsfloatRequestError("CSFloat запретил доступ к индексу цен") from error
         if error.code == 429:
             raise CsfloatRequestError("CSFloat временно ограничил частоту запросов") from error
         raise CsfloatRequestError(f"CSFloat временно недоступен (HTTP {error.code})") from error
@@ -373,8 +380,13 @@ def _authenticated_get(url: str, *, error_message: str):
     try:
         return _load_json_with_rate_limit_retry(request, timeout=30)
     except HTTPError as error:
-        if error.code in (401, 403):
-            raise CsfloatRequestError("CSFloat отклонил API-ключ") from error
+        if error.code == 401:
+            raise CsfloatRequestError("CSFloat отклонил API-ключ. Пересоздайте ключ в профиле") from error
+        if error.code == 403:
+            raise CsfloatRequestError(
+                "CSFloat требует повторного входа для приватных данных. "
+                "Войдите в аккаунт и пересоздайте API-ключ"
+            ) from error
         if error.code == 429:
             raise CsfloatRequestError("CSFloat временно ограничил частоту запросов") from error
         raise CsfloatRequestError(

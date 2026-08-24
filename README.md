@@ -40,8 +40,11 @@ docker compose down -v
 - компактные фильтры локального каталога по оружию, редкости и коллекции;
 - отдельные крупные карточки Factory New, Minimal Wear, Field-Tested, Well-Worn и Battle-Scarred;
 - минимальные цены CSFloat и CSGO Market рядом на каждой карточке качества;
+- переключатель конкретных лотов CSFloat/CSGO Market, явное направление покупки/продажи и настройки комиссий пополнения/вывода;
+- режимы профита Raw, Smart, Enhanced и Quick flip; Quick flip лениво получает лучший bid другой площадки;
 - серверное сравнение обеих направлений сделки через Profit Engine;
-- список конкретных активных лотов CSFloat открывается поверх сайта после выбора качества;
+- список конкретных активных лотов выбранной площадки открывается поверх сайта после выбора качества;
+- детальный экран показывает аналитику CSFloat и CSGO Market параллельно; публичная история CSGO Market не содержит float проданных предметов;
 - сортировки «Лучшие сделки CSFloat» и «Сначала дешевле»;
 - серверные фильтры CSFloat по float, варианту и диапазону цены;
 - фильтры «только с наклейками» и «только с charm»;
@@ -65,7 +68,8 @@ GET /api/skins/search?q=redline&weapon=weapon_ak47&rarity=rarity_mythical_weapon
 GET /api/skins/{skin_id}
 GET /api/skins/{skin_id}/market/csfloat
 GET /api/skins/{skin_id}/market/csgomarket
-GET /api/skins/{skin_id}/markets/compare?deposit_method=crypto&withdraw_method=crypto
+GET /api/skins/{skin_id}/market/csgomarket/listings
+GET /api/skins/{skin_id}/markets/compare?profit_mode=smart&deposit_method=crypto&withdraw_method=crypto
 GET /api/skins/{skin_id}/market/csfloat/listings?sort_by=best_deal&wear=field-tested&variant=normal&has_stickers=true&has_charm=false
 GET /api/listings/{listing_id}/market/csfloat/quick-sell
 GET /api/variants/{variant_id}/market/csfloat

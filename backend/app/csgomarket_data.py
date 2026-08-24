@@ -26,6 +26,13 @@ MARKETPLACE = "CSGO Market"
 DEFAULT_CACHE_TTL_SECONDS = 300
 DEFAULT_DETAILS_TTL_SECONDS = 120
 DETAILS_VERSION = 1
+WEAR_NAMES = {
+    "factory-new": "Factory New",
+    "minimal-wear": "Minimal Wear",
+    "field-tested": "Field-Tested",
+    "well-worn": "Well-Worn",
+    "battle-scarred": "Battle-Scarred",
+}
 
 
 def get_csgomarket_prices(skin_id: str) -> dict[str, Any]:
@@ -56,6 +63,117 @@ def get_csgomarket_prices(skin_id: str) -> dict[str, Any]:
         for variant in variants
     }
     return _price_response(variants, fresh_rows, ttl_seconds, cached=False)
+
+
+def get_csgomarket_skin_listings(
+    skin_id: str,
+    *,
+    sort_by: str = "lowest_price",
+    wear: str | None = None,
+    variant: str = "any",
+    min_float: float | None = None,
+    max_float: float | None = None,
+    min_price_cents: int | None = None,
+    max_price_cents: int | None = None,
+    has_stickers: bool = False,
+    has_charm: bool = False,
+    limit: int = 30,
+) -> dict[str, Any] | None:
+    """Return concrete Market.CSGO listings for matching local variants."""
+    with get_connection() as connection:
+        skin = connection.execute(
+            "SELECT id, name, image_url FROM skins WHERE id = %s", (skin_id,)
+        ).fetchone()
+        if skin is None:
+            return None
+        variants = list(
+            connection.execute(
+                """
+                SELECT id, market_hash_name, wear_name, stattrak, souvenir, image_url
+                FROM skin_variants
+                WHERE skin_id = %s AND market_hash_name IS NOT NULL
+                ORDER BY id
+                """,
+                (skin_id,),
+            ).fetchall()
+        )
+
+    expected_wear = WEAR_NAMES.get(wear) if wear else None
+    selected_variants = [
+        row
+        for row in variants
+        if (expected_wear is None or row["wear_name"] == expected_wear)
+        and (
+            variant == "any"
+            or (variant == "normal" and not row["stattrak"] and not row["souvenir"])
+            or (variant == "stattrak" and row["stattrak"])
+            or (variant == "souvenir" and row["souvenir"])
+        )
+    ]
+    if has_charm or not selected_variants:
+        return {
+            "marketplace": MARKETPLACE,
+            "sort_by": "lowest_price",
+            "listings": [],
+            "error": None,
+        }
+
+    listings: list[dict[str, object]] = []
+    errors = []
+    with ThreadPoolExecutor(max_workers=min(3, len(selected_variants))) as executor:
+        futures = {
+            executor.submit(
+                get_active_listings,
+                row["market_hash_name"],
+                limit=50,
+                with_stickers=has_stickers,
+            ): row
+            for row in selected_variants
+        }
+        for future, row in futures.items():
+            try:
+                raw_listings = future.result()
+            except CsgoMarketRequestError as error:
+                errors.append(str(error))
+                continue
+            for listing in raw_listings:
+                float_value = listing.get("float_value")
+                price_cents = listing.get("price_cents")
+                if has_stickers and not listing.get("stickers"):
+                    continue
+                if min_float is not None and (
+                    float_value is None or float(float_value) < min_float
+                ):
+                    continue
+                if max_float is not None and (
+                    float_value is None or float(float_value) > max_float
+                ):
+                    continue
+                if min_price_cents is not None and (
+                    price_cents is None or int(price_cents) < min_price_cents
+                ):
+                    continue
+                if max_price_cents is not None and (
+                    price_cents is None or int(price_cents) > max_price_cents
+                ):
+                    continue
+                listing["marketplace"] = MARKETPLACE
+                listing["marketplace_id"] = "csgomarket"
+                listing["variant_id"] = row["id"]
+                listing["wear_name"] = row["wear_name"]
+                listing["image_url"] = row["image_url"] or skin["image_url"]
+                listing["item_name"] = skin["name"]
+                listings.append(listing)
+
+    listings.sort(key=lambda listing: int(listing["price_cents"]))
+    return {
+        "marketplace": MARKETPLACE,
+        "sort_by": "lowest_price",
+        "requested_sort_by": sort_by,
+        "listings": listings[:limit],
+        "error": errors[0] if errors and not listings else None,
+        "partial_error": errors[0] if errors and listings else None,
+    }
 
 
 def get_csgomarket_variant_details(variant_id: str) -> dict[str, Any] | None:
@@ -129,6 +247,49 @@ def get_csgomarket_variant_details(variant_id: str) -> dict[str, Any] | None:
     }
     _store_variant_details(variant_id, detail)
     return _detail_response(context, detail, cached=False, stale=stale)
+
+
+def get_csgomarket_variant_fast_buy(variant_id: str) -> dict[str, Any] | None:
+    """Return the best CSGO Market bid, reusing a fresh detail snapshot."""
+    ttl_seconds = _positive_int_env(
+        "CSGOMARKET_DETAILS_TTL_SECONDS", DEFAULT_DETAILS_TTL_SECONDS
+    )
+    with get_connection() as connection:
+        context = connection.execute(
+            "SELECT market_hash_name FROM skin_variants WHERE id = %s", (variant_id,)
+        ).fetchone()
+        if context is None:
+            return None
+        cached = connection.execute(
+            """
+            SELECT buy_orders, buy_orders_error,
+                   fetched_at >= NOW() - (%s * INTERVAL '1 second') AS is_fresh
+            FROM marketplace_variant_details
+            WHERE marketplace = %s AND variant_id = %s
+            """,
+            (ttl_seconds, MARKETPLACE, variant_id),
+        ).fetchone()
+    if cached and cached["is_fresh"]:
+        orders = cached.get("buy_orders") or []
+        return {
+            "best_price_cents": max(
+                (order["price_cents"] for order in orders), default=None
+            ),
+            "error": cached.get("buy_orders_error"),
+            "cached": True,
+        }
+
+    try:
+        orders = get_order_book(context["market_hash_name"], limit=10)["buy_orders"]
+    except CsgoMarketRequestError as error:
+        return {"best_price_cents": None, "error": str(error), "cached": False}
+    return {
+        "best_price_cents": max(
+            (order["price_cents"] for order in orders), default=None
+        ),
+        "error": None,
+        "cached": False,
+    }
 
 
 def _load_skin_cache(
@@ -391,6 +552,10 @@ def _detail_response(
         "stats": {
             "sales_count": detail.get("sales_count"),
             "sales_scope": "До 200 последних продаж CSGO Market",
+            "sales_float_available": False,
+            "sales_float_note": (
+                "Публичная история CSGO Market не передаёт float проданного предмета"
+            ),
             "sales_per_day": liquidity["sales_per_day"],
             "liquidity_score": liquidity["score"],
             "liquidity_label": liquidity["label"],

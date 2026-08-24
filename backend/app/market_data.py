@@ -302,6 +302,52 @@ def get_csfloat_variant_details(variant_id: str) -> dict[str, Any] | None:
     return _detail_response(context, detail, cached=False, stale=stale)
 
 
+def get_csfloat_variant_fast_buy(variant_id: str) -> dict[str, Any] | None:
+    """Return the best currently matching CSFloat bid without loading sales."""
+    ttl_seconds = _positive_int_env(
+        "CSFLOAT_DETAILS_TTL_SECONDS", DEFAULT_DETAILS_TTL_SECONDS
+    )
+    with get_connection() as connection:
+        context = connection.execute(
+            "SELECT market_hash_name FROM skin_variants WHERE id = %s", (variant_id,)
+        ).fetchone()
+        if context is None:
+            return None
+        cached = connection.execute(
+            """
+            SELECT buy_orders, buy_orders_error,
+                   fetched_at >= NOW() - (%s * INTERVAL '1 second') AS is_fresh
+            FROM marketplace_variant_details
+            WHERE marketplace = %s AND variant_id = %s
+            """,
+            (ttl_seconds, MARKETPLACE, variant_id),
+        ).fetchone()
+    if cached and cached["is_fresh"]:
+        orders = cached.get("buy_orders") or []
+        return {
+            "best_price_cents": max(
+                (order["price_cents"] for order in orders), default=None
+            ),
+            "error": cached.get("buy_orders_error"),
+            "cached": True,
+        }
+
+    try:
+        listings = get_active_listings(context["market_hash_name"], limit=1)
+        if not listings:
+            return {"best_price_cents": None, "error": None, "cached": False}
+        orders = get_buy_orders(str(listings[0]["listing_id"]), limit=10)
+    except CsfloatRequestError as error:
+        return {"best_price_cents": None, "error": str(error), "cached": False}
+    return {
+        "best_price_cents": max(
+            (order["price_cents"] for order in orders), default=None
+        ),
+        "error": None,
+        "cached": False,
+    }
+
+
 def calculate_liquidity(
     sales: list[dict[str, object]],
     lowest_ask_cents: int | None,
@@ -494,6 +540,13 @@ def _detail_response(
         "stats": {
             "sales_count": detail.get("sales_count"),
             "sales_scope": "Доступная история CSFloat",
+            "sales_float_available": any(
+                sale.get("float_value") is not None
+                for sale in (detail.get("sales") or [])
+            ),
+            "sales_float_note": (
+                "CSFloat передаёт float для тех продаж, где он доступен в ответе API"
+            ),
             "sales_per_day": liquidity["sales_per_day"],
             "liquidity_score": liquidity["score"],
             "liquidity_label": liquidity["label"],

@@ -7,6 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .catalog import catalogue_size, get_catalog_filters, get_skin, search_skins
+from .csgomarket_data import (
+    get_csgomarket_prices,
+    get_csgomarket_variant_details,
+)
+from .market_comparison import get_skin_market_comparison
 from .market_data import (
     get_csfloat_prices,
     get_csfloat_listing_quick_sell,
@@ -18,7 +23,7 @@ from .models import CalculationRequest, CatalogueSearchResult
 from .profit import calculate_profit
 
 load_dotenv()
-app = FastAPI(title="trueROI API", version="0.8.0")
+app = FastAPI(title="trueROI API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +69,30 @@ def skin_csfloat_prices(skin_id: str):
     if get_skin(skin_id) is None:
         raise HTTPException(status_code=404, detail="Скин не найден")
     return get_csfloat_prices(skin_id)
+
+
+@app.get("/api/skins/{skin_id}/market/csgomarket")
+def skin_csgomarket_prices(skin_id: str):
+    if get_skin(skin_id) is None:
+        raise HTTPException(status_code=404, detail="Скин не найден")
+    return get_csgomarket_prices(skin_id)
+
+
+@app.get("/api/skins/{skin_id}/markets/compare")
+def skin_market_comparison(
+    skin_id: str,
+    deposit_method: Literal["card", "crypto"] = "crypto",
+    withdraw_method: Literal["card", "crypto"] = "crypto",
+    use_deposit_fee: bool = True,
+):
+    if get_skin(skin_id) is None:
+        raise HTTPException(status_code=404, detail="Скин не найден")
+    return get_skin_market_comparison(
+        skin_id,
+        deposit_method=deposit_method,
+        withdraw_method=withdraw_method,
+        use_deposit_fee=use_deposit_fee,
+    )
 
 
 @app.get("/api/skins/{skin_id}/market/csfloat/listings")
@@ -116,6 +145,14 @@ def skin_csfloat_listings(
 @app.get("/api/variants/{variant_id}/market/csfloat")
 def variant_csfloat_details(variant_id: str):
     details = get_csfloat_variant_details(variant_id)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Вариант скина не найден")
+    return details
+
+
+@app.get("/api/variants/{variant_id}/market/csgomarket")
+def variant_csgomarket_details(variant_id: str):
+    details = get_csgomarket_variant_details(variant_id)
     if details is None:
         raise HTTPException(status_code=404, detail="Вариант скина не найден")
     return details

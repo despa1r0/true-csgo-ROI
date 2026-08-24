@@ -172,18 +172,21 @@ async function loadWearPrices() {
   const skinId = state.selectedSkin.id;
   const request = new AbortController();
   state.pricesRequest = request;
-  setMarketStatus("Обновляем цены…", "loading");
+  setMarketStatus("Сравниваем площадки…", "loading");
   try {
-    const result = await api.get(`/api/skins/${encodeURIComponent(skinId)}/market/csfloat`, request.signal);
+    const result = await api.get(`/api/skins/${encodeURIComponent(skinId)}/markets/compare`, request.signal);
     if (request !== state.pricesRequest || state.selectedSkin?.id !== skinId) return;
     state.prices = new Map(result.variants.map((item) => [item.variant_id, item]));
-    const firstError = result.variants.find((item) => item.error)?.error;
-    const available = result.variants.filter((item) => item.listing).length;
-    if (available) setMarketStatus(firstError ? "Цены из кэша" : "Цены актуальны", firstError ? "warning" : "ready");
-    else if (firstError) setMarketStatus("Временный сбой CSFloat", "error");
+    const firstError = result.marketplaces.find((item) => item.error)?.error;
+    const available = result.variants.reduce(
+      (count, item) => count + Object.values(item.markets || {}).filter(Boolean).length,
+      0,
+    );
+    if (available) setMarketStatus(firstError ? "Часть цен из кэша" : "2 рынка · цены актуальны", firstError ? "warning" : "ready");
+    else if (firstError) setMarketStatus("Площадки временно недоступны", "error");
     else setMarketStatus("Активных лотов нет", "muted");
   } catch (error) {
-    if (error.name !== "AbortError") setMarketStatus("Временный сбой CSFloat", "error");
+    if (error.name !== "AbortError") setMarketStatus("Сравнение временно недоступно", "error");
   } finally {
     if (request === state.pricesRequest) {
       state.pricesPending = false;
@@ -201,11 +204,26 @@ function renderQualityCards() {
     return;
   }
   qualities.forEach((quality) => {
-    const priced = quality.variants
-      .map((variant) => ({ variant, market: state.prices.get(variant.id) }))
-      .filter((item) => item.market?.listing)
-      .sort((left, right) => left.market.listing.price_cents - right.market.listing.price_cents);
-    const cheapest = priced[0]?.market.listing;
+    const marketMinimums = { csfloat: null, csgomarket: null };
+    const opportunities = [];
+    quality.variants.forEach((variant) => {
+      const comparison = state.prices.get(variant.id);
+      (comparison?.opportunities || []).forEach((opportunity) => {
+        opportunities.push({ ...opportunity, market_hash_name: comparison.market_hash_name });
+      });
+      Object.entries(comparison?.markets || {}).forEach(([marketplace, listing]) => {
+        if (!listing) return;
+        if (!marketMinimums[marketplace] || listing.price_cents < marketMinimums[marketplace].price_cents) {
+          marketMinimums[marketplace] = listing;
+        }
+      });
+    });
+    const availablePrices = Object.entries(marketMinimums).filter(([, listing]) => listing);
+    availablePrices.sort((left, right) => left[1].price_cents - right[1].price_cents);
+    const cheapest = availablePrices[0]?.[1];
+    const cheapestMarket = availablePrices[0]?.[0];
+    opportunities.sort((left, right) => right.profit_cents - left.profit_cents);
+    const bestOpportunity = opportunities[0];
     const card = document.createElement("button");
     card.type = "button";
     card.className = "quality-card";
@@ -220,7 +238,25 @@ function renderQualityCards() {
     const bottom = element("div", "quality-card-bottom");
     const price = element("strong", "quality-price");
     price.textContent = state.pricesPending ? "Цена…" : cheapest ? `от ${formatUsd(cheapest.price_cents)}` : "Нет цены";
-    bottom.append(price, element("small", "", [...new Set(types)].join(" · ")));
+    const marketPrices = element("div", "quality-market-prices");
+    [
+      ["csfloat", "CSFloat"],
+      ["csgomarket", "CSGO Market"],
+    ].forEach(([marketplace, label]) => {
+      const row = element("span", marketplace === cheapestMarket ? "is-cheapest" : "");
+      row.append(element("small", "", label), element("strong", "", state.pricesPending ? "…" : formatNullableUsd(marketMinimums[marketplace]?.price_cents)));
+      marketPrices.append(row);
+    });
+    bottom.append(price, marketPrices);
+    if (bestOpportunity) {
+      const marketLabels = { csfloat: "CSFloat", csgomarket: "CSGO" };
+      const profit = element("small", `quality-profit ${bestOpportunity.profit_cents > 0 ? "is-positive" : "is-negative"}`);
+      const sign = bestOpportunity.profit_cents > 0 ? "+" : "";
+      profit.textContent = `${marketLabels[bestOpportunity.buy_marketplace]} → ${marketLabels[bestOpportunity.sell_marketplace]} · ${sign}${formatUsd(bestOpportunity.profit_cents)} · ${formatPercent(bestOpportunity.cash_roi_percent)}`;
+      profit.title = `${bestOpportunity.market_hash_name}. Чистый результат после комиссий при пополнении и выводе через crypto`;
+      bottom.append(profit);
+    }
+    bottom.append(element("small", "quality-types", [...new Set(types)].join(" · ")));
     card.append(top, imageWrap, bottom);
     card.addEventListener("click", () => openQualityModal(quality));
     elements.qualityGrid.append(card);

@@ -45,6 +45,22 @@ MARKETPLACES = {
             },
         ),
     ),
+    "csgomarket": MarketplaceConfig(
+        can_buy=True,
+        can_sell=True,
+        supports_fast_buy=True,
+        fees=MarketplaceFees(
+            deposit={
+                "crypto": FeeRule(fixed_cents=100),
+                "card": FeeRule(percent=1),
+            },
+            sell=FeeRule(percent=5),
+            withdraw={
+                "crypto": FeeRule(fixed_cents=100),
+                "card": FeeRule(percent=2.8),
+            },
+        ),
+    ),
     "csmoney": MarketplaceConfig(
         can_buy=True,
         can_sell=True,

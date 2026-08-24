@@ -141,6 +141,7 @@ def ensure_schema(connection: Connection) -> None:
             listings JSONB NOT NULL DEFAULT '[]'::JSONB,
             sales JSONB NOT NULL DEFAULT '[]'::JSONB,
             buy_orders JSONB NOT NULL DEFAULT '[]'::JSONB,
+            sell_orders JSONB NOT NULL DEFAULT '[]'::JSONB,
             listings_error TEXT,
             sales_error TEXT,
             buy_orders_error TEXT,
@@ -157,6 +158,10 @@ def ensure_schema(connection: Connection) -> None:
     connection.execute(
         "ALTER TABLE marketplace_variant_details "
         "ADD COLUMN IF NOT EXISTS buy_orders JSONB NOT NULL DEFAULT '[]'::JSONB"
+    )
+    connection.execute(
+        "ALTER TABLE marketplace_variant_details "
+        "ADD COLUMN IF NOT EXISTS sell_orders JSONB NOT NULL DEFAULT '[]'::JSONB"
     )
     connection.execute(
         "ALTER TABLE marketplace_variant_details "

@@ -54,3 +54,13 @@ def test_fixed_fee_is_included_when_deposit_is_used():
 def test_existing_marketplaces_support_selling():
     assert all(marketplace.can_sell for marketplace in MARKETPLACES.values())
     assert all(marketplace.fees.sell is not None for marketplace in MARKETPLACES.values())
+
+
+def test_csgomarket_fee_rules():
+    fees = MARKETPLACES["csgomarket"].fees
+
+    assert fees.deposit["card"] == FeeRule(percent=1)
+    assert fees.deposit["crypto"] == FeeRule(fixed_cents=100)
+    assert fees.sell == FeeRule(percent=5)
+    assert fees.withdraw["card"] == FeeRule(percent=2.8)
+    assert fees.withdraw["crypto"] == FeeRule(fixed_cents=100)

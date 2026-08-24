@@ -104,6 +104,15 @@ select:focus, input:focus { border-color: #5b6672; }
 .quality-card:hover .quality-image img { transform: scale(1.035); }
 .quality-card-bottom { display: grid; gap: 5px; padding-top: 12px; border-top: 1px solid var(--border); }
 .quality-price { font-size: 21px; letter-spacing: -.03em; }
+.quality-market-prices { display: grid; gap: 3px; margin: 4px 0; }
+.quality-market-prices > span { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); }
+.quality-market-prices small { font-size: 10px; }
+.quality-market-prices strong { color: #aeb6c0; font-size: 11px; }
+.quality-market-prices .is-cheapest strong { color: var(--accent); }
+.quality-profit { display: block; padding-top: 5px; border-top: 1px solid var(--border); font-size: 10px; }
+.quality-profit.is-positive { color: var(--accent); }
+.quality-profit.is-negative { color: var(--muted); }
+.quality-types { display: block; }
 .quality-card-bottom small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 
 .market-toolbar { display: flex; align-items: end; gap: 12px; padding: 14px 18px; border: 1px solid var(--border); border-top: 0; background: #111419; }

@@ -3,35 +3,70 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Сравнение цен CS2 на CSFloat и CSGO Market" />
+    <meta name="description" content="Сравнение цен CS2 на CSFloat и CSGO Market" data-i18n-content="meta.description" />
     <title>trueROI — CS2 market data</title>
-    <link rel="stylesheet" href="/styles.css?v=1.3.0" />
+    <link rel="stylesheet" href="/styles.css?v=1.4.0" />
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="/" aria-label="trueROI — на главную">
+      <a class="brand" href="/" aria-label="trueROI — на главную" data-i18n-aria-label="brand.home">
         <span class="brand-mark">tR</span><span>true<span>ROI</span></span>
       </a>
-      <div class="header-meta"><span class="source-label">CSFloat + CSGO Market</span><span id="catalogStatus" class="catalog-status">Подключение…</span></div>
+      <div class="header-meta">
+        <span class="source-label">CSFloat + CSGO Market</span>
+        <span id="catalogStatus" class="catalog-status" data-i18n="status.connecting">Подключение…</span>
+        <label class="language-control">
+          <span data-i18n="language.label">Язык</span>
+          <select id="languageSelect" aria-label="Язык интерфейса" data-i18n-aria-label="language.aria">
+            <option value="ru">RU</option>
+            <option value="en">EN</option>
+          </select>
+        </label>
+      </div>
     </header>
 
     <main class="app-shell">
-      <section class="search-panel" aria-label="Поиск по каталогу">
+      <section class="search-panel" aria-label="Поиск по каталогу" data-i18n-aria-label="search.section">
         <div class="search-shell" id="searchShell">
           <div class="search-row">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.4a7.75 7.75 0 1 1-15.5 0 7.75 7.75 0 0 1 15.5 0Z"/></svg>
             <input id="searchInput" type="search" placeholder="AWP Asiimov, Redline, Doppler…" autocomplete="off"
-              aria-label="Название скина" aria-controls="suggestions" aria-expanded="false" />
+              aria-label="Название скина" data-i18n-aria-label="search.input" aria-controls="suggestions" aria-expanded="false" />
             <kbd aria-hidden="true">/</kbd>
           </div>
           <div class="suggestions" id="suggestions" role="listbox" hidden></div>
         </div>
-        <div class="catalog-filters" aria-label="Фильтры локального каталога">
-          <label><span>Оружие</span><select id="weaponFilter"><option value="">Любое</option></select></label>
-          <label><span>Редкость</span><select id="rarityFilter"><option value="">Любая</option></select></label>
-          <label><span>Коллекция</span><select id="collectionFilter"><option value="">Любая</option></select></label>
+        <div class="catalog-filters" aria-label="Фильтры локального каталога" data-i18n-aria-label="catalogFilters.aria">
+          <label><span data-i18n="catalogFilters.weapon">Оружие</span><select id="weaponFilter"><option value="" data-i18n="catalogFilters.anyMasculine">Любое</option></select></label>
+          <label><span data-i18n="catalogFilters.rarity">Редкость</span><select id="rarityFilter"><option value="" data-i18n="catalogFilters.anyFeminine">Любая</option></select></label>
+          <label><span data-i18n="catalogFilters.collection">Коллекция</span><select id="collectionFilter"><option value="" data-i18n="catalogFilters.anyFeminine">Любая</option></select></label>
         </div>
-        <p class="search-hint" id="searchHint">Введите минимум 2 символа или выберите фильтр</p>
+        <p class="search-hint" id="searchHint" data-i18n="search.hint">Введите минимум 2 символа или выберите фильтр</p>
+      </section>
+
+      <section class="profit-controls global-profit-controls" aria-label="Настройки расчёта прибыли" data-i18n-aria-label="profit.aria">
+        <div class="profit-controls-copy">
+          <span data-i18n="profit.engine">ПРОФИТ-ДВИЖОК</span>
+          <strong id="profitModeTitle">Smart · все комиссии</strong>
+          <small id="profitModeNote">Покупка и продажа по ask-ценам с учётом всех комиссий.</small>
+        </div>
+        <label><span data-i18n="profit.mode">Режим</span>
+          <select id="profitMode"><option value="raw">Raw</option><option value="smart" selected>Smart</option><option value="enhanced">Enhanced</option><option value="quick_flip">Quick flip</option></select>
+        </label>
+        <label><span data-i18n="profit.buyOn">Купить на</span>
+          <select id="profitBuyMarketplace"><option value="all" selected data-i18n="marketplace.all">Все</option><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
+        </label>
+        <button class="profit-swap" id="profitSwapMarkets" type="button" title="Поменять площадки местами" aria-label="Поменять площадки покупки и продажи местами" data-i18n-title="profit.swapTitle" data-i18n-aria-label="profit.swapAria">⇄</button>
+        <label><span data-i18n="profit.sellOn">Продать на</span>
+          <select id="profitSellMarketplace"><option id="profitAutoSellOption" value="auto" selected data-i18n="marketplace.auto">Авто</option><option value="csgomarket">CSGO Market</option><option value="csfloat">CSFloat</option></select>
+        </label>
+        <label><span data-i18n="profit.deposit">Пополнение</span>
+          <select id="profitDepositMethod"><option value="crypto">Crypto</option><option value="card" data-i18n="payment.card">Карта</option></select>
+        </label>
+        <label><span data-i18n="profit.withdraw">Вывод</span>
+          <select id="profitWithdrawMethod"><option value="crypto">Crypto</option><option value="card" data-i18n="payment.card">Карта</option></select>
+        </label>
+        <label class="profit-checkbox is-disabled" id="profitDepositFeeControl"><input id="profitUseDepositFee" type="checkbox" checked disabled /><span data-i18n="profit.quickDeposit">Депозит в quick flip</span></label>
       </section>
 
       <section class="market-view" id="marketView" hidden aria-live="polite">
@@ -40,35 +75,44 @@
             <img id="skinImage" alt="" />
             <div><p id="skinMeta"></p><h1 id="skinName"></h1><small id="skinCollection"></small></div>
           </div>
-          <div class="market-state"><span>MARKET COMPARISON</span><strong id="marketStatus">Ожидание</strong></div>
+          <div class="market-state"><span>MARKET COMPARISON</span><strong id="marketStatus" data-i18n="status.waiting">Ожидание</strong></div>
         </div>
-        <div class="profit-controls" aria-label="Настройки расчёта прибыли">
-          <div class="profit-controls-copy">
-            <span>ПРОФИТ-ДВИЖОК</span>
-            <strong id="profitModeTitle">Smart · все комиссии</strong>
-            <small id="profitModeNote">Покупка и продажа по ask-ценам с учётом всех комиссий.</small>
+
+        <div class="preselection-toolbar" aria-label="Фильтры лотов до выбора качества" data-i18n-aria-label="preFilters.aria">
+          <div class="preselection-copy"><span data-i18n="preFilters.overline">ЛОТЫ</span><strong data-i18n="preFilters.title">Настройте выдачу до выбора качества</strong></div>
+          <label class="sort-control marketplace-control"><span data-i18n="marketplace.label">Площадка</span>
+            <select id="preMarketplaceSelect"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
+          </label>
+          <label class="sort-control"><span data-i18n="sort.label">Сортировка</span>
+            <select id="preSortSelect"><option id="preBestDealOption" value="best_deal" data-i18n="sort.bestDeals">Лучшие сделки CSFloat</option><option value="lowest_price" data-i18n="sort.lowest">Сначала дешевле</option></select>
+          </label>
+          <button class="filter-toggle" id="preFilterToggle" type="button" aria-expanded="true"><span data-i18n="filters.button">⌁ Фильтры</span> <strong id="preActiveFilterCount" hidden>0</strong></button>
+        </div>
+        <form class="market-filters preselection-filters" id="preMarketFilters">
+          <label><span data-i18n="filters.wear">Износ</span>
+            <select id="preWearFilter"><option value="any" data-i18n="filters.any">Любой</option><option value="Factory New">FN · Factory New</option><option value="Minimal Wear">MW · Minimal Wear</option><option value="Field-Tested">FT · Field-Tested</option><option value="Well-Worn">WW · Well-Worn</option><option value="Battle-Scarred">BS · Battle-Scarred</option></select>
+          </label>
+          <label><span data-i18n="filters.variant">Вариант</span>
+            <select id="preVariantFilter"><option value="any" data-i18n="filters.any">Любой</option><option value="normal" data-i18n="filters.normal">Обычный</option><option value="stattrak">StatTrak™</option><option value="souvenir">Souvenir</option></select>
+          </label>
+          <fieldset class="range-field"><legend>Float</legend>
+            <input id="preMinFloat" type="number" min="0" max="1" step="0.0001" placeholder="от 0.00" data-i18n-placeholder="filters.fromFloat" aria-label="Минимальный float" data-i18n-aria-label="filters.minFloat" /><span>—</span>
+            <input id="preMaxFloat" type="number" min="0" max="1" step="0.0001" placeholder="до 1.00" data-i18n-placeholder="filters.toFloat" aria-label="Максимальный float" data-i18n-aria-label="filters.maxFloat" />
+          </fieldset>
+          <fieldset class="range-field"><legend data-i18n="filters.price">Цена, USD</legend>
+            <input id="preMinPrice" type="number" min="0" step="0.01" placeholder="от" data-i18n-placeholder="filters.from" aria-label="Минимальная цена" data-i18n-aria-label="filters.minPrice" /><span>—</span>
+            <input id="preMaxPrice" type="number" min="0" step="0.01" placeholder="до" data-i18n-placeholder="filters.to" aria-label="Максимальная цена" data-i18n-aria-label="filters.maxPrice" />
+          </fieldset>
+          <div class="boolean-filters">
+            <label><input id="preHasStickers" type="checkbox" /><span data-i18n="filters.stickersOnly">Только с наклейками</span></label>
+            <label><input id="preHasCharm" type="checkbox" /><span data-i18n="filters.charmOnly">Только с charm</span></label>
           </div>
-          <label><span>Режим</span>
-            <select id="profitMode"><option value="raw">Raw</option><option value="smart" selected>Smart</option><option value="enhanced">Enhanced</option><option value="quick_flip">Quick flip</option></select>
-          </label>
-          <label><span>Купить на</span>
-            <select id="profitBuyMarketplace"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
-          </label>
-          <button class="profit-swap" id="profitSwapMarkets" type="button" title="Поменять площадки местами" aria-label="Поменять площадки покупки и продажи местами">⇄</button>
-          <label><span>Продать на</span>
-            <select id="profitSellMarketplace"><option value="csgomarket">CSGO Market</option><option value="csfloat">CSFloat</option></select>
-          </label>
-          <label><span>Пополнение</span>
-            <select id="profitDepositMethod"><option value="crypto">Crypto</option><option value="card">Карта</option></select>
-          </label>
-          <label><span>Вывод</span>
-            <select id="profitWithdrawMethod"><option value="crypto">Crypto</option><option value="card">Карта</option></select>
-          </label>
-          <label class="profit-checkbox is-disabled" id="profitDepositFeeControl"><input id="profitUseDepositFee" type="checkbox" checked disabled /><span>Депозит в quick flip</span></label>
-        </div>
+          <div class="filter-actions"><button class="secondary-button" id="preResetMarketFilters" type="button" data-i18n="common.reset">Сбросить</button><button class="primary-button" type="submit" data-i18n="filters.apply">Применить</button></div>
+          <p class="filter-error" id="preFilterError" hidden></p>
+        </form>
         <div class="quality-heading">
-          <div><span>КАЧЕСТВО</span><h2>Выберите степень износа</h2></div>
-          <p>После выбора откроются конкретные листинги этого качества.</p>
+          <div><span data-i18n="quality.overline">КАЧЕСТВО</span><h2 data-i18n="quality.title">Выберите степень износа</h2></div>
+          <p data-i18n="quality.note">После выбора откроются конкретные листинги этого качества.</p>
         </div>
         <div class="quality-grid" id="qualityGrid"></div>
         <div class="listings-message" id="qualityMessage" hidden></div>
@@ -76,7 +120,7 @@
     </main>
 
     <dialog class="listing-modal" id="listingModal">
-      <button class="modal-close" id="modalClose" type="button" aria-label="Закрыть">×</button>
+      <button class="modal-close" id="modalClose" type="button" aria-label="Закрыть" data-i18n-aria-label="common.close">×</button>
 
       <section class="modal-browser" id="modalBrowser">
         <header class="browser-heading">
@@ -84,31 +128,31 @@
           <span class="result-count" id="resultCount"></span>
         </header>
         <div class="market-toolbar">
-          <label class="sort-control marketplace-control"><span>Площадка</span>
+          <label class="sort-control marketplace-control"><span data-i18n="marketplace.label">Площадка</span>
             <select id="marketplaceSelect"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
           </label>
-          <label class="sort-control"><span>Сортировка</span>
-            <select id="sortSelect"><option id="bestDealOption" value="best_deal">Лучшие сделки CSFloat</option><option value="lowest_price">Сначала дешевле</option></select>
+          <label class="sort-control"><span data-i18n="sort.label">Сортировка</span>
+            <select id="sortSelect"><option id="bestDealOption" value="best_deal" data-i18n="sort.bestDeals">Лучшие сделки CSFloat</option><option value="lowest_price" data-i18n="sort.lowest">Сначала дешевле</option></select>
           </label>
-          <button class="filter-toggle" id="filterToggle" type="button" aria-expanded="false">⌁ Фильтры <strong id="activeFilterCount" hidden>0</strong></button>
+          <button class="filter-toggle" id="filterToggle" type="button" aria-expanded="false"><span data-i18n="filters.button">⌁ Фильтры</span> <strong id="activeFilterCount" hidden>0</strong></button>
         </div>
         <form class="market-filters" id="marketFilters" hidden>
-          <label><span>Вариант</span>
-            <select id="variantFilter"><option value="any">Любой</option><option value="normal">Обычный</option><option value="stattrak">StatTrak™</option><option value="souvenir">Souvenir</option></select>
+          <label><span data-i18n="filters.variant">Вариант</span>
+            <select id="variantFilter"><option value="any" data-i18n="filters.any">Любой</option><option value="normal" data-i18n="filters.normal">Обычный</option><option value="stattrak">StatTrak™</option><option value="souvenir">Souvenir</option></select>
           </label>
           <fieldset class="range-field"><legend>Float</legend>
-            <input id="minFloat" type="number" min="0" max="1" step="0.0001" placeholder="от 0.00" aria-label="Минимальный float" /><span>—</span>
-            <input id="maxFloat" type="number" min="0" max="1" step="0.0001" placeholder="до 1.00" aria-label="Максимальный float" />
+            <input id="minFloat" type="number" min="0" max="1" step="0.0001" placeholder="от 0.00" data-i18n-placeholder="filters.fromFloat" aria-label="Минимальный float" data-i18n-aria-label="filters.minFloat" /><span>—</span>
+            <input id="maxFloat" type="number" min="0" max="1" step="0.0001" placeholder="до 1.00" data-i18n-placeholder="filters.toFloat" aria-label="Максимальный float" data-i18n-aria-label="filters.maxFloat" />
           </fieldset>
-          <fieldset class="range-field"><legend>Цена, USD</legend>
-            <input id="minPrice" type="number" min="0" step="0.01" placeholder="от" aria-label="Минимальная цена" /><span>—</span>
-            <input id="maxPrice" type="number" min="0" step="0.01" placeholder="до" aria-label="Максимальная цена" />
+          <fieldset class="range-field"><legend data-i18n="filters.price">Цена, USD</legend>
+            <input id="minPrice" type="number" min="0" step="0.01" placeholder="от" data-i18n-placeholder="filters.from" aria-label="Минимальная цена" data-i18n-aria-label="filters.minPrice" /><span>—</span>
+            <input id="maxPrice" type="number" min="0" step="0.01" placeholder="до" data-i18n-placeholder="filters.to" aria-label="Максимальная цена" data-i18n-aria-label="filters.maxPrice" />
           </fieldset>
           <div class="boolean-filters">
-            <label><input id="hasStickers" type="checkbox" /><span>Только с наклейками</span></label>
-            <label><input id="hasCharm" type="checkbox" /><span>Только с charm</span></label>
+            <label><input id="hasStickers" type="checkbox" /><span data-i18n="filters.stickersOnly">Только с наклейками</span></label>
+            <label><input id="hasCharm" type="checkbox" /><span data-i18n="filters.charmOnly">Только с charm</span></label>
           </div>
-          <div class="filter-actions"><button class="secondary-button" id="resetMarketFilters" type="button">Сбросить</button><button class="primary-button" type="submit">Показать</button></div>
+          <div class="filter-actions"><button class="secondary-button" id="resetMarketFilters" type="button" data-i18n="common.reset">Сбросить</button><button class="primary-button" type="submit" data-i18n="filters.show">Показать</button></div>
           <p class="filter-error" id="filterError" hidden></p>
         </form>
         <div class="listing-grid modal-listing-grid" id="listingGrid"></div>
@@ -116,7 +160,7 @@
       </section>
 
       <section class="modal-detail" id="modalDetail" hidden>
-        <button class="detail-back" id="detailBack" type="button">← Все листинги качества</button>
+        <button class="detail-back" id="detailBack" type="button" data-i18n="detail.back">← Все листинги качества</button>
         <div class="modal-layout">
           <aside class="modal-listing" id="modalListing"></aside>
           <section class="modal-analytics" id="modalAnalytics"></section>
@@ -130,6 +174,6 @@
         <span class="suggestion-copy"><strong></strong><small></small></span><span class="arrow">↗</span>
       </button>
     </template>
-    <script src="/app.js?v=1.3.0" defer></script>
+    <script src="/app.js?v=1.4.0" defer></script>
   </body>
 </html>

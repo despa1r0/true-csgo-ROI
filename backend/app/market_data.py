@@ -40,6 +40,13 @@ WEAR_FLOAT_RANGES = {
     "battle-scarred": (0.45, 1.0),
 }
 VARIANT_CATEGORIES = {"any": 0, "normal": 1, "stattrak": 2, "souvenir": 3}
+WEAR_NAME_BY_SLUG = {
+    "factory-new": "Factory New",
+    "minimal-wear": "Minimal Wear",
+    "field-tested": "Field-Tested",
+    "well-worn": "Well-Worn",
+    "battle-scarred": "Battle-Scarred",
+}
 LIQUIDITY_METHOD = (
     "Beta-оценка: 65% — сохранение цены при быстрой продаже (лучшая заявка / "
     "минимальный листинг), 25% — глубина заявок в пределах 5% от лучшей, "
@@ -217,6 +224,76 @@ def get_whitemarket_variant_listings(
         "marketplace": WHITEMARKET_MARKETPLACE,
         "listings": listings,
         "error": None,
+    }
+
+
+def get_whitemarket_skin_listings(
+    skin_id: str,
+    *,
+    sort_by: str = "lowest_price",
+    wear: str | None = None,
+    variant: str = "any",
+    min_float: float | None = None,
+    max_float: float | None = None,
+    min_price_cents: int | None = None,
+    max_price_cents: int | None = None,
+    has_stickers: bool = False,
+    has_charm: bool = False,
+    limit: int = 30,
+) -> dict[str, Any] | None:
+    """Skin-level WhiteMarket listings, shaped like get_csfloat_skin_listings.
+
+    WhiteMarket's own listings are fetched per exact variant (its
+    market_hash_name already encodes wear), so this resolves
+    skin_id + wear + variant to the one matching skin_variants row first,
+    then delegates to get_whitemarket_variant_listings. WhiteMarket has no
+    "best_deal" ranking, so sort_by is accepted for a uniform frontend
+    contract but listings are always price-ascending underneath.
+    """
+    wear_name = WEAR_NAME_BY_SLUG.get(wear) if wear else None
+    query = "SELECT id, image_url FROM skin_variants WHERE skin_id = %s"
+    params: list[Any] = [skin_id]
+    if wear_name:
+        query += " AND wear_name = %s"
+        params.append(wear_name)
+    if variant == "normal":
+        query += " AND stattrak = FALSE AND souvenir = FALSE"
+    elif variant == "stattrak":
+        query += " AND stattrak = TRUE"
+    elif variant == "souvenir":
+        query += " AND souvenir = TRUE"
+
+    with get_connection() as connection:
+        skin_exists = connection.execute(
+            "SELECT 1 FROM skins WHERE id = %s", (skin_id,)
+        ).fetchone()
+        if skin_exists is None:
+            return None
+        matched_variant = connection.execute(query, params).fetchone()
+
+    if matched_variant is None:
+        return {
+            "marketplace": WHITEMARKET_MARKETPLACE,
+            "sort_by": sort_by,
+            "listings": [],
+            "error": None,
+        }
+
+    result = get_whitemarket_variant_listings(
+        matched_variant["id"],
+        min_float=min_float,
+        max_float=max_float,
+        min_price_cents=min_price_cents,
+        max_price_cents=max_price_cents,
+        has_stickers=has_stickers,
+        has_charm=has_charm,
+        limit=limit,
+    )
+    return {
+        "marketplace": WHITEMARKET_MARKETPLACE,
+        "sort_by": sort_by,
+        "listings": result["listings"] if result else [],
+        "error": result["error"] if result else None,
     }
 
 

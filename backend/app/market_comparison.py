@@ -9,7 +9,12 @@ from .csgomarket_data import (
     get_csgomarket_prices,
     get_csgomarket_variant_fast_buy,
 )
-from .market_data import get_csfloat_prices, get_csfloat_variant_fast_buy
+from .market_data import (
+    get_csfloat_prices,
+    get_csfloat_variant_fast_buy,
+    get_whitemarket_prices,
+    get_whitemarket_variant_quick_sell,
+)
 from .marketplaces_fees import MARKETPLACES, FeeRule
 from .profit import calculate_profit
 
@@ -17,8 +22,22 @@ from .profit import calculate_profit
 MARKET_RESPONSE_KEYS = {
     "CSFloat": "csfloat",
     "CSGO Market": "csgomarket",
+    "WhiteMarket": "whitemarket",
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
+
+
+def _fast_buy_function(marketplace: str):
+    """Look up the fast-buy/quick-sell function by module-level name at call
+    time (not a module-level dict of function objects) so tests can still
+    monkeypatch e.g. market_comparison.get_csfloat_variant_fast_buy."""
+    if marketplace == "csfloat":
+        return get_csfloat_variant_fast_buy
+    if marketplace == "csgomarket":
+        return get_csgomarket_variant_fast_buy
+    if marketplace == "whitemarket":
+        return get_whitemarket_variant_quick_sell
+    raise ValueError(f"No fast-buy function for marketplace: {marketplace}")
 
 
 def get_skin_market_comparison(
@@ -29,20 +48,23 @@ def get_skin_market_comparison(
     use_deposit_fee: bool = True,
     profit_mode: str = "smart",
 ) -> dict[str, Any]:
-    """Load both cached indexes concurrently and compare every exact variant."""
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    """Load all cached indexes concurrently and compare every exact variant."""
+    with ThreadPoolExecutor(max_workers=3) as executor:
         csfloat_future = executor.submit(get_csfloat_prices, skin_id)
         csgomarket_future = executor.submit(get_csgomarket_prices, skin_id)
+        whitemarket_future = executor.submit(get_whitemarket_prices, skin_id)
         csfloat = csfloat_future.result()
         csgomarket = csgomarket_future.result()
+        whitemarket = whitemarket_future.result()
+    market_responses = [csfloat, csgomarket, whitemarket]
     quick_sell_prices = (
-        _load_quick_sell_prices([csfloat, csgomarket])
+        _load_quick_sell_prices(market_responses)
         if profit_mode == "quick_flip"
         else None
     )
     return compare_market_responses(
         skin_id,
-        [csfloat, csgomarket],
+        market_responses,
         deposit_method=deposit_method,
         withdraw_method=withdraw_method,
         use_deposit_fee=use_deposit_fee,
@@ -259,17 +281,18 @@ def _load_quick_sell_prices(
             continue
         available.sort(key=lambda pair: pair[1]["price_cents"])
         sell_marketplace = available[1][0]
+
+        if not MARKETPLACES[sell_marketplace].supports_fast_buy:
+            continue
         targets.append((variant_id, sell_marketplace))
 
     results: dict[str, dict[str, dict[str, Any]]] = {}
     with ThreadPoolExecutor(max_workers=min(3, len(targets) or 1)) as executor:
         futures = {
-            executor.submit(
-                get_csfloat_variant_fast_buy
-                if marketplace == "csfloat"
-                else get_csgomarket_variant_fast_buy,
+            executor.submit(_fast_buy_function(marketplace), variant_id): (
                 variant_id,
-            ): (variant_id, marketplace)
+                marketplace,
+            )
             for variant_id, marketplace in targets
         }
         for future, (variant_id, marketplace) in futures.items():

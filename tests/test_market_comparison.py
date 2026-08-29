@@ -149,6 +149,11 @@ def test_quick_flip_loads_only_other_market_fast_buy(monkeypatch):
     )
     monkeypatch.setattr(
         market_comparison,
+        "get_whitemarket_prices",
+        lambda _skin_id: market_response("WhiteMarket", None),
+    )
+    monkeypatch.setattr(
+        market_comparison,
         "get_csgomarket_variant_fast_buy",
         lambda variant_id: calls.append(("csgomarket", variant_id))
         or {"best_price_cents": 900, "error": None},

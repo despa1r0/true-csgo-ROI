@@ -11,7 +11,9 @@ from urllib.parse import urlencode
 
 from psycopg.types.json import Jsonb
 
-from .csfloat import (
+from .database import get_connection
+from .marketplaces.base import MarketplaceRequestError
+from .marketplaces.csfloat import (
     CsfloatRequestError,
     get_active_listings,
     get_buy_orders,
@@ -20,10 +22,12 @@ from .csfloat import (
     get_sales_history,
     search_market_listings,
 )
-from .database import get_connection
+from .marketplaces.whitemarket import get_active_listings as get_whitemarket_active_listings
+from .marketplaces.whitemarket import get_cheapest_listing as get_whitemarket_cheapest_listing
 
 
 MARKETPLACE = "CSFloat"
+WHITEMARKET_MARKETPLACE = "WhiteMarket"
 DEFAULT_CACHE_TTL_SECONDS = 300
 DEFAULT_DETAILS_TTL_SECONDS = 120
 DETAILS_VERSION = 3
@@ -52,20 +56,21 @@ def _positive_int_env(name: str, default: int) -> int:
 
 
 def get_csfloat_prices(skin_id: str) -> dict[str, Any]:
-    """Synchronize the global index when stale and return one skin's prices."""
+    """Synchronize CSFloat's global index when stale and return one skin's prices."""
     ttl_seconds = _positive_int_env(
         "CSFLOAT_CACHE_TTL_SECONDS", DEFAULT_CACHE_TTL_SECONDS
     )
-    variants, cached, sync_is_fresh = _load_skin_cache(skin_id, ttl_seconds)
+    variants, cached, sync_is_fresh = _load_skin_cache(skin_id, MARKETPLACE, ttl_seconds)
 
     if sync_is_fresh:
-        return _response(variants, cached, ttl_seconds, cached=True)
+        return _response(MARKETPLACE, variants, cached, ttl_seconds, cached=True)
 
     try:
         price_index = get_price_index()
-        _store_price_index(price_index)
+        _store_csfloat_price_index(price_index)
     except CsfloatRequestError as error:
         return _response(
+            MARKETPLACE,
             variants,
             cached,
             ttl_seconds,
@@ -76,10 +81,197 @@ def get_csfloat_prices(skin_id: str) -> dict[str, Any]:
 
     fetched_at = datetime.now(timezone.utc)
     fresh_rows = {
-        variant["id"]: _index_row(variant, price_index, fetched_at)
+        variant["id"]: _csfloat_index_row(variant, price_index, fetched_at)
         for variant in variants
     }
-    return _response(variants, fresh_rows, ttl_seconds, cached=False)
+    return _response(MARKETPLACE, variants, fresh_rows, ttl_seconds, cached=False)
+
+
+def get_whitemarket_prices(skin_id: str) -> dict[str, Any]:
+    """Live per-variant minimum price via WhiteMarket's Partner GraphQL API.
+
+    WhiteMarket has no bulk "whole marketplace" price feed like CSFloat's
+    price-list — only per-item search — so unlike get_csfloat_prices above,
+    each variant's cheapest listing is fetched individually (in parallel)
+    and cached independently in marketplace_listings, keyed by its own
+    fetched_at rather than one marketplace-wide sync timestamp.
+    """
+    ttl_seconds = _positive_int_env(
+        "WHITEMARKET_CACHE_TTL_SECONDS", DEFAULT_CACHE_TTL_SECONDS
+    )
+    with get_connection() as connection:
+        variants = list(
+            connection.execute(
+                """
+                SELECT id, market_hash_name
+                FROM skin_variants
+                WHERE skin_id = %s AND market_hash_name IS NOT NULL
+                ORDER BY id
+                """,
+                (skin_id,),
+            ).fetchall()
+        )
+        cached = {
+            row["variant_id"]: row
+            for row in connection.execute(
+                """
+                SELECT variant_id, listing_id, price_cents, item_url, float_value,
+                       quantity, is_available, fetched_at,
+                       fetched_at >= NOW() - (%s * INTERVAL '1 second') AS is_fresh
+                FROM marketplace_listings
+                WHERE marketplace = %s
+                  AND variant_id IN (SELECT id FROM skin_variants WHERE skin_id = %s)
+                """,
+                (ttl_seconds, WHITEMARKET_MARKETPLACE, skin_id),
+            ).fetchall()
+        }
+
+    stale_variants = [
+        variant for variant in variants if not (cached.get(variant["id"]) or {}).get("is_fresh")
+    ]
+
+    fresh_rows: dict[str, dict[str, Any]] = {}
+    fetch_error: str | None = None
+    if stale_variants:
+        fetched_at = datetime.now(timezone.utc)
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {
+                executor.submit(
+                    get_whitemarket_cheapest_listing, variant["market_hash_name"]
+                ): variant
+                for variant in stale_variants
+            }
+            for future, variant in futures.items():
+                try:
+                    listing = future.result()
+                except MarketplaceRequestError as error:
+                    fetch_error = str(error)
+                    continue
+                fresh_rows[variant["id"]] = _whitemarket_listing_row(variant, listing, fetched_at)
+
+    if fresh_rows:
+        _store_whitemarket_listing_rows(list(fresh_rows.values()))
+
+    merged_rows = {**cached, **fresh_rows}
+    return _response(
+        WHITEMARKET_MARKETPLACE,
+        variants,
+        merged_rows,
+        ttl_seconds,
+        cached=not fresh_rows,
+        stale=bool(fetch_error) and bool(cached),
+        error=fetch_error,
+    )
+
+
+def get_whitemarket_variant_listings(
+    variant_id: str,
+    *,
+    min_float: float | None = None,
+    max_float: float | None = None,
+    min_price_cents: int | None = None,
+    max_price_cents: int | None = None,
+    has_stickers: bool = False,
+    has_charm: bool = False,
+    limit: int = 30,
+) -> dict[str, Any] | None:
+    """Live active WhiteMarket listings for one exact catalogue variant.
+
+    Unlike CSFloat's skin-level listings endpoint (which takes a wear param
+    and translates it into a float range for one shared paint_index),
+    WhiteMarket's market_hash_name already encodes the wear per variant, so
+    this is looked up directly by variant_id — no wear/float-range
+    translation needed. Not cached in Postgres: requires a live Partner
+    Token round trip each call, unlike the price index above.
+    """
+    with get_connection() as connection:
+        variant = connection.execute(
+            "SELECT market_hash_name, image_url FROM skin_variants WHERE id = %s",
+            (variant_id,),
+        ).fetchone()
+    if variant is None or not variant.get("market_hash_name"):
+        return None
+
+    try:
+        listings = get_whitemarket_active_listings(
+            variant["market_hash_name"],
+            min_float=min_float,
+            max_float=max_float,
+            min_price_cents=min_price_cents,
+            max_price_cents=max_price_cents,
+            has_stickers=has_stickers,
+            has_charm=has_charm,
+            limit=limit,
+        )
+    except MarketplaceRequestError as error:
+        return {
+            "marketplace": WHITEMARKET_MARKETPLACE,
+            "listings": [],
+            "error": str(error),
+        }
+
+    for listing in listings:
+        listing["image_url"] = listing.get("image_url") or variant.get("image_url")
+    return {
+        "marketplace": WHITEMARKET_MARKETPLACE,
+        "listings": listings,
+        "error": None,
+    }
+
+
+def _whitemarket_listing_row(
+    variant: dict[str, Any],
+    listing: dict[str, object] | None,
+    fetched_at: datetime,
+) -> dict[str, Any]:
+    if listing is None:
+        return {
+            "variant_id": variant["id"],
+            "listing_id": None,
+            "price_cents": None,
+            "item_url": None,
+            "float_value": None,
+            "quantity": None,
+            "is_available": False,
+            "fetched_at": fetched_at,
+        }
+    return {
+        "variant_id": variant["id"],
+        "listing_id": listing.get("listing_id"),
+        "price_cents": listing.get("price_cents"),
+        "item_url": listing.get("item_url"),
+        "float_value": listing.get("float_value"),
+        "quantity": listing.get("quantity"),
+        "is_available": True,
+        "fetched_at": fetched_at,
+    }
+
+
+def _store_whitemarket_listing_rows(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT INTO marketplace_listings (
+                    marketplace, variant_id, listing_id, price_cents, item_url,
+                    float_value, quantity, is_available, fetched_at
+                ) VALUES (
+                    %(marketplace)s, %(variant_id)s, %(listing_id)s, %(price_cents)s,
+                    %(item_url)s, %(float_value)s, %(quantity)s, %(is_available)s, NOW()
+                )
+                ON CONFLICT (marketplace, variant_id) DO UPDATE SET
+                    listing_id = EXCLUDED.listing_id,
+                    price_cents = EXCLUDED.price_cents,
+                    item_url = EXCLUDED.item_url,
+                    float_value = EXCLUDED.float_value,
+                    quantity = EXCLUDED.quantity,
+                    is_available = EXCLUDED.is_available,
+                    fetched_at = NOW()
+                """,
+                [{**row, "marketplace": WHITEMARKET_MARKETPLACE} for row in rows],
+            )
 
 
 def get_csfloat_skin_listings(
@@ -525,7 +717,7 @@ def _detail_response(
 
 
 def _load_skin_cache(
-    skin_id: str, ttl_seconds: int
+    skin_id: str, marketplace: str, ttl_seconds: int
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], bool]:
     with get_connection() as connection:
         variants = list(
@@ -551,7 +743,7 @@ def _load_skin_cache(
                       SELECT id FROM skin_variants WHERE skin_id = %s
                   )
                 """,
-                (MARKETPLACE, skin_id),
+                (marketplace, skin_id),
             ).fetchall()
         }
         sync = connection.execute(
@@ -560,12 +752,12 @@ def _load_skin_cache(
             FROM marketplace_syncs
             WHERE marketplace = %s
             """,
-            (ttl_seconds, MARKETPLACE),
+            (ttl_seconds, marketplace),
         ).fetchone()
     return variants, cached, bool(sync and sync["is_fresh"])
 
 
-def _store_price_index(price_index: dict[str, dict[str, int]]) -> None:
+def _store_csfloat_price_index(price_index: dict[str, dict[str, int]]) -> None:
     with get_connection() as connection:
         variants = list(
             connection.execute(
@@ -576,7 +768,9 @@ def _store_price_index(price_index: dict[str, dict[str, int]]) -> None:
                 """
             ).fetchall()
         )
-        rows = [_index_row(variant, price_index, None) for variant in variants]
+        rows = [_csfloat_index_row(variant, price_index, None) for variant in variants]
+        for row in rows:
+            row["marketplace"] = MARKETPLACE
         with connection.cursor() as cursor:
             cursor.executemany(
                 """
@@ -608,7 +802,7 @@ def _store_price_index(price_index: dict[str, dict[str, int]]) -> None:
         )
 
 
-def _index_row(
+def _csfloat_index_row(
     variant: dict[str, Any],
     price_index: dict[str, dict[str, int]],
     fetched_at: datetime | None,
@@ -616,7 +810,6 @@ def _index_row(
     market_hash_name = variant["market_hash_name"]
     entry = price_index.get(market_hash_name)
     return {
-        "marketplace": MARKETPLACE,
         "variant_id": variant["id"],
         "market_hash_name": market_hash_name,
         "listing_id": None,
@@ -634,6 +827,7 @@ def _index_row(
 
 
 def _response(
+    marketplace: str,
     variants: list[dict[str, Any]],
     rows: dict[str, dict[str, Any]],
     ttl_seconds: int,
@@ -648,7 +842,7 @@ def _response(
         listing = None
         if row and row["is_available"]:
             listing = {
-                "marketplace": MARKETPLACE,
+                "marketplace": marketplace,
                 "listing_id": row.get("listing_id"),
                 "price_cents": row["price_cents"],
                 "item_url": row["item_url"],
@@ -671,7 +865,7 @@ def _response(
             }
         )
     return {
-        "marketplace": MARKETPLACE,
+        "marketplace": marketplace,
         "cache_ttl_seconds": ttl_seconds,
         "variants": results,
     }

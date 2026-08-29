@@ -6,7 +6,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from .models import MarketPrice
+from .base import MarketplaceRequestError
+from ..models import MarketPrice
 
 CSFLOAT_LISTINGS_URL = "https://csfloat.com/api/v1/listings"
 CSFLOAT_PRICE_LIST_URL = f"{CSFLOAT_LISTINGS_URL}/price-list"
@@ -15,7 +16,7 @@ CSFLOAT_ITEM_URL = "https://csfloat.com/item"
 CSFLOAT_SORTS = {"best_deal", "lowest_price"}
 
 
-class CsfloatRequestError(Exception):
+class CsfloatRequestError(MarketplaceRequestError):
     """Безопасное для отображения пользователю описание сбоя CSFloat."""
 
 

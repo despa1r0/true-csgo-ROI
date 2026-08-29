@@ -20,6 +20,7 @@ from .market_data import (
     get_csfloat_variant_details,
     get_whitemarket_prices,
     get_whitemarket_variant_listings,
+    get_whitemarket_variant_quick_sell,
 )
 from .marketplaces_fees import MARKETPLACES, FeeRule
 from .models import CalculationRequest, CatalogueSearchResult
@@ -238,6 +239,14 @@ def variant_whitemarket_listings(
         has_charm=has_charm,
         limit=limit,
     )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Вариант скина не найден")
+    return result
+
+
+@app.get("/api/variants/{variant_id}/market/whitemarket/quick-sell")
+def variant_whitemarket_quick_sell(variant_id: str):
+    result = get_whitemarket_variant_quick_sell(variant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Вариант скина не найден")
     return result

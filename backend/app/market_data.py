@@ -23,6 +23,7 @@ from .marketplaces.csfloat import (
     search_market_listings,
 )
 from .marketplaces.whitemarket import get_active_listings as get_whitemarket_active_listings
+from .marketplaces.whitemarket import get_buy_orders as get_whitemarket_buy_orders
 from .marketplaces.whitemarket import get_cheapest_listing as get_whitemarket_cheapest_listing
 
 
@@ -215,6 +216,39 @@ def get_whitemarket_variant_listings(
     return {
         "marketplace": WHITEMARKET_MARKETPLACE,
         "listings": listings,
+        "error": None,
+    }
+
+
+def get_whitemarket_variant_quick_sell(variant_id: str) -> dict[str, Any] | None:
+    with get_connection() as connection:
+        variant = connection.execute(
+            "SELECT market_hash_name FROM skin_variants WHERE id = %s",
+            (variant_id,),
+        ).fetchone()
+    if variant is None or not variant.get("market_hash_name"):
+        return None
+
+    try:
+        orders = get_whitemarket_buy_orders(variant["market_hash_name"], limit=10)
+    except MarketplaceRequestError as error:
+        return {
+            "marketplace": WHITEMARKET_MARKETPLACE,
+            "best_price_cents": None,
+            "best_price_quantity": 0,
+            "orders": [],
+            "error": str(error),
+        }
+
+    best_price = max((order["price_cents"] for order in orders), default=None)
+    best_quantity = sum(
+        order["quantity"] for order in orders if order["price_cents"] == best_price
+    )
+    return {
+        "marketplace": WHITEMARKET_MARKETPLACE,
+        "best_price_cents": best_price,
+        "best_price_quantity": best_quantity,
+        "orders": orders,
         "error": None,
     }
 

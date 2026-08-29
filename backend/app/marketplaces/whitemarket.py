@@ -7,9 +7,12 @@ self-service flow, exchanged for a short-lived access token per the
 Partner docs' auth flow. Without a configured token, every call here
 raises WhitemarketRequestError.
 
-WhiteMarket has no buy-order book and no public sales history for
-arbitrary items, so there is no WhiteMarket equivalent of csfloat's
-get_buy_orders() / get_sales_history() / quick-sell / liquidity score.
+WhiteMarket does have a public buy-order book (order_list, confirmed live —
+other users' orders come back with isMy: false), so quick-sell here mirrors
+CSFloat's. There is, however, no market-wide public sales history: deal_history
+only returns the authenticated partner account's own deals (confirmed live —
+empty even with no filters at all), so there is still no WhiteMarket
+equivalent of csfloat's get_sales_history() / liquidity score.
 """
 
 import json
@@ -125,6 +128,77 @@ def get_active_listings(
             listing["quantity"] = total_count if isinstance(total_count, int) else None
         listings.append(listing)
     return listings
+
+
+_ORDER_LIST_QUERY = """
+query($search: MarketOrderSearchInput!, $first: Int!) {
+  order_list(search: $search, forwardPagination: {first: $first}) {
+    edges {
+      node {
+        nameHash
+        quantity
+        price { value currency }
+        params { param value }
+      }
+    }
+  }
+}
+"""
+
+
+def get_buy_orders(market_hash_name: str, *, limit: int = 10) -> list[dict[str, object]]:
+
+    data = _graphql_request(
+        _ORDER_LIST_QUERY,
+        {
+            "search": {
+                "appId": "CSGO",
+                "nameHash": market_hash_name,
+                "sort": {"field": "PRICE", "type": "DESC"},
+            },
+            "first": 50,
+        },
+    )
+    edges = ((data.get("order_list") or {}).get("edges")) or []
+    orders: list[dict[str, object]] = []
+    for edge in edges:
+        order = _normalize_order(
+            edge.get("node") if isinstance(edge, dict) else None, market_hash_name
+        )
+        if order is not None:
+            orders.append(order)
+        if len(orders) >= limit:
+            break
+    return orders
+
+
+def _normalize_order(node: object, market_hash_name: str) -> dict[str, object] | None:
+    if not isinstance(node, dict) or node.get("nameHash") != market_hash_name:
+        return None
+    price = node.get("price") if isinstance(node.get("price"), dict) else {}
+    price_cents = (
+        _price_to_cents(price.get("value")) if isinstance(price.get("value"), str) else None
+    )
+    quantity = node.get("quantity")
+    if price_cents is None or not isinstance(quantity, int) or quantity < 1:
+        return None
+
+    min_float = None
+    max_float = None
+    for param in node.get("params") or []:
+        if not isinstance(param, dict) or param.get("param") != "CSGO_FLOAT":
+            continue
+        value = param.get("value")
+        if isinstance(value, list) and len(value) == 2:
+            min_float = _float_from_str(value[0])
+            max_float = _float_from_str(value[1])
+
+    return {
+        "price_cents": price_cents,
+        "quantity": quantity,
+        "min_float": min_float,
+        "max_float": max_float,
+    }
 
 
 _access_token_cache: dict[str, object] = {"token": None, "expires_at": 0.0}

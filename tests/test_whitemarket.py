@@ -245,3 +245,108 @@ def test_cheapest_listing_is_none_when_market_is_empty(monkeypatch):
     monkeypatch.setattr(whitemarket, "urlopen", fake_urlopen)
 
     assert whitemarket.get_cheapest_listing("Nonexistent Skin (Field-Tested)") is None
+
+
+# --- Partner GraphQL API (get_buy_orders) -----------------------------------
+
+# order_list's own nameHash filter matches loosely (confirmed against the
+# live API — it returns other weapons of the same wear too), so the mock
+# response mirrors that: one exact match plus two off-target orders that
+# must be filtered out client-side.
+ORDER_LIST_PAYLOAD = {
+    "data": {
+        "order_list": {
+            "edges": [
+                {
+                    "node": {
+                        "nameHash": "AK-47 | Case Hardened (Field-Tested)",
+                        "quantity": 1,
+                        "price": {"value": "197.33", "currency": "USD"},
+                        "params": [{"param": "CSGO_FLOAT", "value": ["0.15", "0.38"]}],
+                    }
+                },
+                {
+                    "node": {
+                        "nameHash": "AK-47 | Redline (Field-Tested)",
+                        "quantity": 2,
+                        "price": {"value": "42.50", "currency": "USD"},
+                        "params": [{"param": "CSGO_FLOAT", "value": ["0.15", "0.1599"]}],
+                    }
+                },
+                {
+                    "node": {
+                        "nameHash": "AK-47 | Redline (Field-Tested)",
+                        "quantity": 0,  # sold out — should be dropped
+                        "price": {"value": "40.00", "currency": "USD"},
+                        "params": [{"param": "CSGO_FLOAT", "value": ["0.15", "0.38"]}],
+                    }
+                },
+                {
+                    "node": {
+                        "nameHash": "StatTrak™ AK-47 | Redline (Field-Tested)",
+                        "quantity": 1,
+                        "price": {"value": "71.00", "currency": "USD"},
+                        "params": [{"param": "CSGO_FLOAT", "value": ["0.15", "0.19"]}],
+                    }
+                },
+            ]
+        }
+    }
+}
+
+
+def test_buy_orders_keeps_only_exact_nameHash_matches(monkeypatch):
+    monkeypatch.setenv("WHITEMARKET_PARTNER_TOKEN", "partner-secret")
+    captured = {}
+
+    def fake_urlopen(request, timeout):
+        query = _request_query(request)
+        if "auth_token" in query:
+            return FakeResponse(AUTH_SUCCESS_PAYLOAD)
+        captured["variables"] = json.loads(request.data.decode("utf-8"))["variables"]
+        return FakeResponse(ORDER_LIST_PAYLOAD)
+
+    monkeypatch.setattr(whitemarket, "urlopen", fake_urlopen)
+
+    orders = whitemarket.get_buy_orders("AK-47 | Redline (Field-Tested)")
+
+    # Only the one exact match with quantity > 0 survives — Case Hardened,
+    # StatTrak, and the sold-out (quantity=0) Redline row are all dropped.
+    assert orders == [
+        {"price_cents": 4250, "quantity": 2, "min_float": 0.15, "max_float": 0.1599}
+    ]
+    assert captured["variables"]["search"]["nameHash"] == "AK-47 | Redline (Field-Tested)"
+
+
+def test_buy_orders_respects_limit(monkeypatch):
+    monkeypatch.setenv("WHITEMARKET_PARTNER_TOKEN", "partner-secret")
+
+    payload = {
+        "data": {
+            "order_list": {
+                "edges": [
+                    {
+                        "node": {
+                            "nameHash": "AWP | Asiimov (Field-Tested)",
+                            "quantity": 1,
+                            "price": {"value": str(100 - i), "currency": "USD"},
+                            "params": [],
+                        }
+                    }
+                    for i in range(5)
+                ]
+            }
+        }
+    }
+
+    def fake_urlopen(request, timeout):
+        query = _request_query(request)
+        if "auth_token" in query:
+            return FakeResponse(AUTH_SUCCESS_PAYLOAD)
+        return FakeResponse(payload)
+
+    monkeypatch.setattr(whitemarket, "urlopen", fake_urlopen)
+
+    orders = whitemarket.get_buy_orders("AWP | Asiimov (Field-Tested)", limit=2)
+
+    assert len(orders) == 2

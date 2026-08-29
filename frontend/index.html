@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Поиск скинов CS2 и аналитика лотов CSFloat" />
+    <meta name="description" content="Сравнение цен CS2 на CSFloat и CSGO Market" />
     <title>trueROI — CS2 market data</title>
-    <link rel="stylesheet" href="/styles.css?v=0.8.0" />
+    <link rel="stylesheet" href="/styles.css?v=1.3.0" />
   </head>
   <body>
     <header class="site-header">
       <a class="brand" href="/" aria-label="trueROI — на главную">
         <span class="brand-mark">tR</span><span>true<span>ROI</span></span>
       </a>
-      <div class="header-meta"><span class="source-label">CSFloat</span><span id="catalogStatus" class="catalog-status">Подключение…</span></div>
+      <div class="header-meta"><span class="source-label">CSFloat + CSGO Market</span><span id="catalogStatus" class="catalog-status">Подключение…</span></div>
     </header>
 
     <main class="app-shell">
@@ -40,7 +40,31 @@
             <img id="skinImage" alt="" />
             <div><p id="skinMeta"></p><h1 id="skinName"></h1><small id="skinCollection"></small></div>
           </div>
-          <div class="market-state"><span>CSFLOAT MARKET</span><strong id="marketStatus">Ожидание</strong></div>
+          <div class="market-state"><span>MARKET COMPARISON</span><strong id="marketStatus">Ожидание</strong></div>
+        </div>
+        <div class="profit-controls" aria-label="Настройки расчёта прибыли">
+          <div class="profit-controls-copy">
+            <span>ПРОФИТ-ДВИЖОК</span>
+            <strong id="profitModeTitle">Smart · все комиссии</strong>
+            <small id="profitModeNote">Покупка и продажа по ask-ценам с учётом всех комиссий.</small>
+          </div>
+          <label><span>Режим</span>
+            <select id="profitMode"><option value="raw">Raw</option><option value="smart" selected>Smart</option><option value="enhanced">Enhanced</option><option value="quick_flip">Quick flip</option></select>
+          </label>
+          <label><span>Купить на</span>
+            <select id="profitBuyMarketplace"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
+          </label>
+          <button class="profit-swap" id="profitSwapMarkets" type="button" title="Поменять площадки местами" aria-label="Поменять площадки покупки и продажи местами">⇄</button>
+          <label><span>Продать на</span>
+            <select id="profitSellMarketplace"><option value="csgomarket">CSGO Market</option><option value="csfloat">CSFloat</option></select>
+          </label>
+          <label><span>Пополнение</span>
+            <select id="profitDepositMethod"><option value="crypto">Crypto</option><option value="card">Карта</option></select>
+          </label>
+          <label><span>Вывод</span>
+            <select id="profitWithdrawMethod"><option value="crypto">Crypto</option><option value="card">Карта</option></select>
+          </label>
+          <label class="profit-checkbox is-disabled" id="profitDepositFeeControl"><input id="profitUseDepositFee" type="checkbox" checked disabled /><span>Депозит в quick flip</span></label>
         </div>
         <div class="quality-heading">
           <div><span>КАЧЕСТВО</span><h2>Выберите степень износа</h2></div>
@@ -60,8 +84,11 @@
           <span class="result-count" id="resultCount"></span>
         </header>
         <div class="market-toolbar">
+          <label class="sort-control marketplace-control"><span>Площадка</span>
+            <select id="marketplaceSelect"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
+          </label>
           <label class="sort-control"><span>Сортировка</span>
-            <select id="sortSelect"><option value="best_deal">Лучшие сделки CSFloat</option><option value="lowest_price">Сначала дешевле</option></select>
+            <select id="sortSelect"><option id="bestDealOption" value="best_deal">Лучшие сделки CSFloat</option><option value="lowest_price">Сначала дешевле</option></select>
           </label>
           <button class="filter-toggle" id="filterToggle" type="button" aria-expanded="false">⌁ Фильтры <strong id="activeFilterCount" hidden>0</strong></button>
         </div>
@@ -103,6 +130,6 @@
         <span class="suggestion-copy"><strong></strong><small></small></span><span class="arrow">↗</span>
       </button>
     </template>
-    <script src="/app.js?v=0.8.0" defer></script>
+    <script src="/app.js?v=1.3.0" defer></script>
   </body>
 </html>

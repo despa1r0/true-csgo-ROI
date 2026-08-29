@@ -12,7 +12,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
-    Write-Host "Created .env. Add CSFLOAT_API_KEY and run this script again." -ForegroundColor Yellow
+    Write-Host "Created .env. Add CSFLOAT_API_KEY and CSGOMARKET_API_KEY, then run this script again." -ForegroundColor Yellow
     exit 1
 }
 
@@ -21,6 +21,13 @@ $hasCsfloatKey = Get-Content ".env" | Where-Object {
 }
 if (-not $hasCsfloatKey) {
     throw "CSFLOAT_API_KEY is empty in .env."
+}
+
+$hasCsgoMarketKey = Get-Content ".env" | Where-Object {
+    $_ -match '^\s*CSGOMARKET_API_KEY\s*=\s*[^#\s].*$'
+}
+if (-not $hasCsgoMarketKey) {
+    throw "CSGOMARKET_API_KEY is empty in .env."
 }
 
 if ($Detached) {

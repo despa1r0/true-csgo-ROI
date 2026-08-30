@@ -20,6 +20,7 @@ from .market_data import (
     get_csfloat_variant_details,
     get_whitemarket_prices,
     get_whitemarket_skin_listings,
+    get_whitemarket_variant_details,
     get_whitemarket_variant_listings,
     get_whitemarket_variant_quick_sell,
 )
@@ -253,6 +254,14 @@ def skin_csfloat_listings(
 @app.get("/api/variants/{variant_id}/market/csfloat")
 def variant_csfloat_details(variant_id: str):
     details = get_csfloat_variant_details(variant_id)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Вариант скина не найден")
+    return details
+
+
+@app.get("/api/variants/{variant_id}/market/whitemarket")
+def variant_whitemarket_details(variant_id: str):
+    details = get_whitemarket_variant_details(variant_id)
     if details is None:
         raise HTTPException(status_code=404, detail="Вариант скина не найден")
     return details

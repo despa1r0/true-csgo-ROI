@@ -330,6 +330,98 @@ def get_whitemarket_variant_quick_sell(variant_id: str) -> dict[str, Any] | None
     }
 
 
+def get_whitemarket_variant_details(variant_id: str) -> dict[str, Any] | None:
+    """Live WhiteMarket snapshot shaped like get_csfloat_variant_details.
+
+    WhiteMarket has no sales history or liquidity score (see whitemarket.py's
+    module docstring), so those fields are always empty here — this exists
+    so the frontend can render a WhiteMarket panel with the same shape as
+    CSFloat's, just with fewer populated fields. Not cached: always live.
+    """
+    with get_connection() as connection:
+        variant = connection.execute(
+            "SELECT market_hash_name FROM skin_variants WHERE id = %s",
+            (variant_id,),
+        ).fetchone()
+    if variant is None or not variant.get("market_hash_name"):
+        return None
+
+    market_hash_name = variant["market_hash_name"]
+    listings: list[dict[str, object]] = []
+    listings_error: str | None = None
+    try:
+        listings = get_whitemarket_active_listings(market_hash_name, limit=10)
+    except MarketplaceRequestError as error:
+        listings_error = str(error)
+
+    orders: list[dict[str, object]] = []
+    quick_sell_error: str | None = None
+    try:
+        orders = get_whitemarket_buy_orders(market_hash_name, limit=10)
+    except MarketplaceRequestError as error:
+        quick_sell_error = str(error)
+
+    lowest_ask_cents = listings[0]["price_cents"] if listings else None
+    best_bid = max((order["price_cents"] for order in orders), default=None)
+    best_bid_quantity = sum(
+        order["quantity"] for order in orders if order["price_cents"] == best_bid
+    )
+    discount = None
+    near_bid_depth = 0
+    if best_bid is not None and lowest_ask_cents:
+        retention = min(
+            Decimal("100"), Decimal(best_bid) / Decimal(lowest_ask_cents) * Decimal("100")
+        )
+        discount = float(
+            (Decimal("100") - retention).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        )
+        near_bid_floor = Decimal(best_bid) * Decimal("0.95")
+        near_bid_depth = sum(
+            order["quantity"]
+            for order in orders
+            if Decimal(order["price_cents"]) >= near_bid_floor
+        )
+
+    return {
+        "marketplace": WHITEMARKET_MARKETPLACE,
+        "variant_id": variant_id,
+        "market_hash_name": market_hash_name,
+        "overview": {
+            "price_cents": lowest_ask_cents,
+            "active_listings": len(listings) or None,
+            "item_url": listings[0]["item_url"] if listings else None,
+        },
+        "stats": {
+            "sales_count": None,
+            "sales_scope": "У WhiteMarket нет публичной истории продаж",
+            "sales_per_day": None,
+            "liquidity_score": None,
+            "liquidity_label": None,
+            "near_bid_depth": near_bid_depth,
+        },
+        "quick_sell": {
+            "best_price_cents": best_bid,
+            "best_price_quantity": best_bid_quantity,
+            "discount_percent": discount,
+            "near_bid_depth": near_bid_depth,
+            "orders": orders,
+            "error": quick_sell_error,
+            "note": (
+                "Публичные заявки на покупку WhiteMarket, не привязаны к float "
+                "конкретного лота."
+            ),
+        },
+        "listings": listings,
+        "sales": [],
+        "listings_error": listings_error,
+        "sales_error": "История продаж недоступна",
+        "buy_orders_error": quick_sell_error,
+        "fetched_at": None,
+        "cached": False,
+        "stale": False,
+    }
+
+
 def _whitemarket_listing_row(
     variant: dict[str, Any],
     listing: dict[str, object] | None,

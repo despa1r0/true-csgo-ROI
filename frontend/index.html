@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Сравнение цен CS2 на CSFloat и CSGO Market" data-i18n-content="meta.description" />
+    <meta name="description" content="Сравнение цен CS2 на CSFloat, CSGO Market и WhiteMarket" data-i18n-content="meta.description" />
     <title>trueROI — CS2 market data</title>
-    <link rel="stylesheet" href="/styles.css?v=1.4.0" />
+    <link rel="stylesheet" href="/styles.css?v=1.5.0" />
   </head>
   <body>
     <header class="site-header">
@@ -13,7 +13,7 @@
         <span class="brand-mark">tR</span><span>true<span>ROI</span></span>
       </a>
       <div class="header-meta">
-        <span class="source-label">CSFloat + CSGO Market</span>
+        <span class="source-label">CSFloat + CSGO Market + WhiteMarket</span>
         <span id="catalogStatus" class="catalog-status" data-i18n="status.connecting">Подключение…</span>
         <label class="language-control">
           <span data-i18n="language.label">Язык</span>
@@ -54,11 +54,11 @@
           <select id="profitMode"><option value="raw">Raw</option><option value="smart" selected>Smart</option><option value="enhanced">Enhanced</option><option value="quick_flip">Quick flip</option></select>
         </label>
         <label><span data-i18n="profit.buyOn">Купить на</span>
-          <select id="profitBuyMarketplace"><option value="all" selected data-i18n="marketplace.all">Все</option><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
+          <select id="profitBuyMarketplace"><option value="all" selected data-i18n="marketplace.all">Все</option><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option><option value="whitemarket">WhiteMarket</option></select>
         </label>
         <button class="profit-swap" id="profitSwapMarkets" type="button" title="Поменять площадки местами" aria-label="Поменять площадки покупки и продажи местами" data-i18n-title="profit.swapTitle" data-i18n-aria-label="profit.swapAria">⇄</button>
         <label><span data-i18n="profit.sellOn">Продать на</span>
-          <select id="profitSellMarketplace"><option id="profitAutoSellOption" value="auto" selected data-i18n="marketplace.auto">Авто</option><option value="csgomarket">CSGO Market</option><option value="csfloat">CSFloat</option></select>
+          <select id="profitSellMarketplace"><option id="profitAutoSellOption" value="auto" selected data-i18n="marketplace.auto">Авто</option><option value="csgomarket">CSGO Market</option><option value="csfloat">CSFloat</option><option value="whitemarket">WhiteMarket</option></select>
         </label>
         <label><span data-i18n="profit.deposit">Пополнение</span>
           <select id="profitDepositMethod"><option value="crypto">Crypto</option><option value="card" data-i18n="payment.card">Карта</option></select>
@@ -81,7 +81,7 @@
         <div class="preselection-toolbar" aria-label="Фильтры лотов до выбора качества" data-i18n-aria-label="preFilters.aria">
           <div class="preselection-copy"><span data-i18n="preFilters.overline">ЛОТЫ</span><strong data-i18n="preFilters.title">Настройте выдачу до выбора качества</strong></div>
           <label class="sort-control marketplace-control"><span data-i18n="marketplace.label">Площадка</span>
-            <select id="preMarketplaceSelect"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
+            <select id="preMarketplaceSelect"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option><option value="whitemarket">WhiteMarket</option></select>
           </label>
           <label class="sort-control"><span data-i18n="sort.label">Сортировка</span>
             <select id="preSortSelect"><option id="preBestDealOption" value="best_deal" data-i18n="sort.bestDeals">Лучшие сделки CSFloat</option><option value="lowest_price" data-i18n="sort.lowest">Сначала дешевле</option></select>
@@ -129,7 +129,7 @@
         </header>
         <div class="market-toolbar">
           <label class="sort-control marketplace-control"><span data-i18n="marketplace.label">Площадка</span>
-            <select id="marketplaceSelect"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option></select>
+            <select id="marketplaceSelect"><option value="csfloat">CSFloat</option><option value="csgomarket">CSGO Market</option><option value="whitemarket">WhiteMarket</option></select>
           </label>
           <label class="sort-control"><span data-i18n="sort.label">Сортировка</span>
             <select id="sortSelect"><option id="bestDealOption" value="best_deal" data-i18n="sort.bestDeals">Лучшие сделки CSFloat</option><option value="lowest_price" data-i18n="sort.lowest">Сначала дешевле</option></select>
@@ -174,6 +174,6 @@
         <span class="suggestion-copy"><strong></strong><small></small></span><span class="arrow">↗</span>
       </button>
     </template>
-    <script src="/app.js?v=1.4.0" defer></script>
+    <script src="/app.js?v=1.5.0" defer></script>
   </body>
 </html>

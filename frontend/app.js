@@ -22,7 +22,7 @@ const elements = Object.fromEntries(
 
 const I18N = {
   ru: {
-    "meta.description": "Сравнение цен CS2 на CSFloat и CSGO Market",
+    "meta.description": "Сравнение цен CS2 на CSFloat, CSGO Market и WhiteMarket",
     "brand.home": "trueROI — на главную",
     "status.connecting": "Подключение…",
     "status.waiting": "Ожидание",
@@ -83,7 +83,7 @@ const I18N = {
     "detail.back": "← Все листинги качества",
   },
   en: {
-    "meta.description": "Compare CS2 prices on CSFloat and CSGO Market",
+    "meta.description": "Compare CS2 prices on CSFloat, CSGO Market and WhiteMarket",
     "brand.home": "trueROI — home",
     "status.connecting": "Connecting…",
     "status.waiting": "Waiting",
@@ -174,7 +174,7 @@ const TEXT = {
     "market.loadingQuick": "Ищем лучшие fast buy заявки…",
     "market.comparing": "Сравниваем площадки…",
     "market.cached": "Часть цен из кэша",
-    "market.ready": "2 рынка · цены актуальны",
+    "market.ready": "3 рынка · цены актуальны",
     "market.unavailable": "Площадки временно недоступны",
     "market.noListings": "Активных лотов нет",
     "market.compareError": "Сравнение временно недоступно",
@@ -293,7 +293,7 @@ const TEXT = {
     "market.loadingQuick": "Finding the best fast-buy orders…",
     "market.comparing": "Comparing marketplaces…",
     "market.cached": "Some prices are cached",
-    "market.ready": "2 markets · prices are current",
+    "market.ready": "3 markets · prices are current",
     "market.unavailable": "Marketplaces are temporarily unavailable",
     "market.noListings": "No active listings",
     "market.compareError": "Comparison is temporarily unavailable",
@@ -431,6 +431,16 @@ function translationKeyFor(text, language) {
   }
   return null;
 }
+
+// Single source of truth for marketplace ids/labels: adding a marketplace
+// only means adding one entry here (plus a backend adapter) instead of
+// hunting down every inline ternary.
+const MARKETPLACE_LABELS = { csfloat: "CSFloat", csgomarket: "CSGO Market", whitemarket: "WhiteMarket" };
+const MARKETPLACE_SHORT_LABELS = { csfloat: "CSFloat", csgomarket: "CSGO", whitemarket: "WhiteMarket" };
+// Capabilities that differ per marketplace and gate frontend UI, mirroring
+// backend/app/marketplaces_fees.py's MarketplaceConfig.
+const MARKETPLACE_SUPPORTS_BEST_DEAL = { csfloat: true, csgomarket: false, whitemarket: false };
+const MARKETPLACE_SUPPORTS_CHARM_FILTER = { csfloat: true, csgomarket: false, whitemarket: true };
 
 const WEAR_SLUGS = {
   "Factory New": "factory-new", "Minimal Wear": "minimal-wear",
@@ -707,7 +717,7 @@ function renderQualityCards() {
   qualities.forEach((quality) => {
     const automaticBuy = elements.profitBuyMarketplace.value === "all";
     const qualityVariants = quality.variants.filter(variantMatchesPreselection);
-    const marketMinimums = { csfloat: null, csgomarket: null };
+    const marketMinimums = Object.fromEntries(Object.keys(MARKETPLACE_LABELS).map((id) => [id, null]));
     const opportunities = [];
     qualityVariants.forEach((variant) => {
       const comparison = state.prices.get(variant.id);
@@ -749,21 +759,17 @@ function renderQualityCards() {
     const price = element("strong", "quality-price");
     price.textContent = state.pricesPending ? t("quality.priceLoading") : cheapest ? t("quality.fromPrice", { price: formatUsd(cheapest.price_cents) }) : t("quality.noPrice");
     const marketPrices = element("div", "quality-market-prices");
-    [
-      ["csfloat", "CSFloat"],
-      ["csgomarket", "CSGO Market"],
-    ].forEach(([marketplace, label]) => {
+    Object.entries(MARKETPLACE_LABELS).forEach(([marketplace, label]) => {
       const row = element("span", marketplace === cheapestMarket ? "is-cheapest" : "");
       row.append(element("small", "", label), element("strong", "", state.pricesPending ? "…" : formatNullableUsd(marketMinimums[marketplace]?.price_cents)));
       marketPrices.append(row);
     });
     bottom.append(price, marketPrices);
     if (bestOpportunity) {
-      const marketLabels = { csfloat: "CSFloat", csgomarket: "CSGO" };
       const profitTone = bestOpportunity.profit_cents > 0 ? "is-positive" : bestOpportunity.profit_cents < 0 ? "is-negative" : "is-neutral";
       const profit = element("small", `quality-profit ${profitTone}`);
       const sign = bestOpportunity.profit_cents > 0 ? "+" : "";
-      profit.textContent = `${marketLabels[bestOpportunity.buy_marketplace]} → ${marketLabels[bestOpportunity.sell_marketplace]} · ${sign}${formatUsd(bestOpportunity.profit_cents)} · ${formatPercent(bestOpportunity.cash_roi_percent)}`;
+      profit.textContent = `${MARKETPLACE_SHORT_LABELS[bestOpportunity.buy_marketplace]} → ${MARKETPLACE_SHORT_LABELS[bestOpportunity.sell_marketplace]} · ${sign}${formatUsd(bestOpportunity.profit_cents)} · ${formatPercent(bestOpportunity.cash_roi_percent)}`;
       const depositLabel = elements.profitDepositMethod.value === "card" ? t("profit.cardCase") : "crypto";
       const withdrawLabel = elements.profitWithdrawMethod.value === "card" ? t("profit.cardCase") : "crypto";
       const depositNote = elements.profitMode.value === "raw"
@@ -889,7 +895,7 @@ async function loadListings() {
   state.marketRequest?.abort();
   const request = new AbortController();
   state.marketRequest = request;
-  const marketLabel = state.selectedMarketplace === "csgomarket" ? "CSGO Market" : "CSFloat";
+  const marketLabel = MARKETPLACE_LABELS[state.selectedMarketplace] || "CSFloat";
   showMessage(elements.listingsMessage, t("listings.loading", { market: marketLabel }), "loading");
   elements.listingGrid.replaceChildren();
   updateActiveFilterCount();
@@ -920,7 +926,7 @@ function renderListingsGrid() {
     card.setAttribute("aria-label", `${listing.market_hash_name}, ${formatUsd(listing.price_cents)}`);
     const top = element("div", "card-top");
     top.append(element("span", "wear-chip", WEAR_CODES[listing.wear_name] || listing.wear_name || "—"));
-    top.append(element("span", "market-chip", listing.marketplace_id === "csgomarket" ? "CSGO" : "CSFloat"));
+    top.append(element("span", "market-chip", MARKETPLACE_SHORT_LABELS[listing.marketplace_id] || "CSFloat"));
     if (listing.stattrak) top.append(element("span", "variant-chip stattrak", "StatTrak™"));
     if (listing.souvenir) top.append(element("span", "variant-chip souvenir", "Souvenir"));
     if (listing.charms?.length) top.append(element("span", "variant-chip charm-chip", "Charm"));
@@ -987,23 +993,33 @@ async function openListingDetail(listing) {
   const quickSellRequest = selectedMarketplace === "csfloat" && listing.listing_id
     ? api.get(`/api/listings/${encodeURIComponent(listing.listing_id)}/market/csfloat/quick-sell`, request.signal)
     : Promise.resolve(null);
-  const [csfloatResult, csgomarketResult, quickSellResult] = await Promise.allSettled([
-    api.get(`/api/variants/${encodeURIComponent(listing.variant_id)}/market/csfloat`, request.signal),
-    api.get(`/api/variants/${encodeURIComponent(listing.variant_id)}/market/csgomarket`, request.signal),
+  const marketplaceIds = Object.keys(MARKETPLACE_LABELS);
+  const results = await Promise.allSettled([
+    ...marketplaceIds.map((marketplace) => (
+      api.get(`/api/variants/${encodeURIComponent(listing.variant_id)}/market/${marketplace}`, request.signal)
+    )),
     quickSellRequest,
   ]);
   if (request !== state.detailRequest) return;
-  const aborted = [csfloatResult, csgomarketResult].some(
+  const marketResults = results.slice(0, marketplaceIds.length);
+  const quickSellResult = results[marketplaceIds.length];
+  const aborted = marketResults.some(
     (result) => result.status === "rejected" && result.reason?.name === "AbortError",
   );
   if (aborted) return;
-  if (csfloatResult.status === "fulfilled" && quickSellResult.status === "fulfilled" && quickSellResult.value) {
-    csfloatResult.value.quick_sell = quickSellResult.value;
+  const resultByMarketplace = Object.fromEntries(
+    marketplaceIds.map((marketplace, index) => [marketplace, marketResults[index]]),
+  );
+  if (
+    resultByMarketplace.csfloat.status === "fulfilled"
+    && quickSellResult.status === "fulfilled"
+    && quickSellResult.value
+  ) {
+    resultByMarketplace.csfloat.value.quick_sell = quickSellResult.value;
   }
-  state.detailResults = {
-    csfloat: normalizeSettledDetail(csfloatResult),
-    csgomarket: normalizeSettledDetail(csgomarketResult),
-  };
+  state.detailResults = Object.fromEntries(
+    marketplaceIds.map((marketplace) => [marketplace, normalizeSettledDetail(resultByMarketplace[marketplace])]),
+  );
   renderModalComparison(listing, state.detailResults);
 }
 
@@ -1026,7 +1042,7 @@ function renderModalListing(listing) {
   if (listing.predicted_price_cents) appendFact(facts, t("detail.valuation"), formatUsd(listing.predicted_price_cents));
   if (listing.deal_percent != null) appendFact(facts, t("detail.valuationDifference"), `${listing.deal_percent > 0 ? "−" : "+"}${formatPercent(Math.abs(listing.deal_percent))}`);
   const marketplace = listing.marketplace_id || state.selectedMarketplace;
-  const marketLabel = marketplace === "csgomarket" ? "CSGO Market" : "CSFloat";
+  const marketLabel = MARKETPLACE_LABELS[marketplace] || "CSFloat";
   const link = element("a", "csfloat-link", t("detail.openListing", { market: marketLabel }));
   link.href = listing.item_url; link.target = "_blank"; link.rel = "noopener noreferrer";
   const attachments = element("div", "modal-stickers");
@@ -1046,8 +1062,9 @@ function renderModalComparison(listing, results) {
   );
   const grid = element("div", "market-analytics-grid");
   grid.append(
-    renderMarketplaceAnalytics("csfloat", "CSFloat", results.csfloat),
-    renderMarketplaceAnalytics("csgomarket", "CSGO Market", results.csgomarket),
+    ...Object.entries(MARKETPLACE_LABELS).map(([marketplace, label]) => (
+      renderMarketplaceAnalytics(marketplace, label, results[marketplace])
+    )),
   );
   elements.modalAnalytics.replaceChildren(header, renderDetailProfitControls(), renderDirectionSummary(listing), grid);
 }
@@ -1078,11 +1095,12 @@ function renderDetailProfitControls() {
   elements.profitAutoSellOption.disabled = !automaticBuy;
   if (automaticBuy) elements.profitSellMarketplace.value = "auto";
   else if (elements.profitSellMarketplace.value === "auto") {
-    elements.profitSellMarketplace.value = elements.profitBuyMarketplace.value === "csfloat" ? "csgomarket" : "csfloat";
+    elements.profitSellMarketplace.value = otherMarketplace(elements.profitBuyMarketplace.value);
   }
+  const marketplaceOptions = Object.entries(MARKETPLACE_LABELS);
   const sellOptions = automaticBuy
-    ? [["auto", t("marketplace.auto")], ["csgomarket", "CSGO Market"], ["csfloat", "CSFloat"]]
-    : [["csgomarket", "CSGO Market"], ["csfloat", "CSFloat"]];
+    ? [["auto", t("marketplace.auto")], ...marketplaceOptions]
+    : marketplaceOptions;
   const section = element("section", "detail-profit-controls");
   const copy = element("div", "detail-profit-copy");
   copy.append(element("span", "", t("detail.calculation")), element("strong", "", t(PROFIT_MODE_UI[mode].titleKey)), element("small", "", t("detail.calculationHint")));
@@ -1093,7 +1111,7 @@ function renderDetailProfitControls() {
       updateProfitModeUi();
       recalculateProfit();
     }),
-    detailSelect(t("profit.buyOn"), [["all", t("marketplace.all")], ["csfloat", "CSFloat"], ["csgomarket", "CSGO Market"]], elements.profitBuyMarketplace.value, (value) => {
+    detailSelect(t("profit.buyOn"), [["all", t("marketplace.all")], ...marketplaceOptions], elements.profitBuyMarketplace.value, (value) => {
       elements.profitBuyMarketplace.value = value;
       keepProfitDirectionDistinct(elements.profitBuyMarketplace);
       updateProfitModeUi();
@@ -1142,7 +1160,7 @@ function renderDirectionSummary(listing) {
   const automaticBuy = elements.profitBuyMarketplace.value === "all";
   let buyMarketplace = elements.profitBuyMarketplace.value;
   let sellMarketplace = elements.profitSellMarketplace.value;
-  const labels = { csfloat: "CSFloat", csgomarket: "CSGO Market" };
+  const labels = MARKETPLACE_LABELS;
   const comparison = state.prices.get(listing.variant_id);
   const opportunity = quickFlip || automaticBuy
     ? [...(comparison?.opportunities || [])].sort((left, right) => (
@@ -1282,24 +1300,27 @@ function updateActiveFilterCount() {
 
 function updateMarketplaceUi() {
   state.selectedMarketplace = elements.marketplaceSelect.value;
-  const isCsgoMarket = state.selectedMarketplace === "csgomarket";
-  elements.browserOverline.textContent = `${isCsgoMarket ? "CSGO MARKET" : "CSFLOAT"} · ${t("browser.listings")}`;
-  elements.bestDealOption.disabled = isCsgoMarket;
-  if (isCsgoMarket && elements.sortSelect.value === "best_deal") elements.sortSelect.value = "lowest_price";
-  elements.hasCharm.disabled = isCsgoMarket;
-  elements.hasCharm.closest("label").classList.toggle("is-disabled", isCsgoMarket);
-  if (isCsgoMarket) elements.hasCharm.checked = false;
+  const supportsBestDeal = MARKETPLACE_SUPPORTS_BEST_DEAL[state.selectedMarketplace];
+  const supportsCharmFilter = MARKETPLACE_SUPPORTS_CHARM_FILTER[state.selectedMarketplace];
+  elements.browserOverline.textContent = `${MARKETPLACE_SHORT_LABELS[state.selectedMarketplace]?.toUpperCase() || "CSFLOAT"} · ${t("browser.listings")}`;
+  elements.bestDealOption.disabled = !supportsBestDeal;
+  if (!supportsBestDeal && elements.sortSelect.value === "best_deal") elements.sortSelect.value = "lowest_price";
+  elements.hasCharm.disabled = !supportsCharmFilter;
+  elements.hasCharm.closest("label").classList.toggle("is-disabled", !supportsCharmFilter);
+  if (!supportsCharmFilter) elements.hasCharm.checked = false;
   syncModalToPreselection();
   updateActiveFilterCount();
 }
 
 function updatePreselectionMarketplaceUi() {
-  const isCsgoMarket = elements.preMarketplaceSelect.value === "csgomarket";
-  elements.preBestDealOption.disabled = isCsgoMarket;
-  if (isCsgoMarket && elements.preSortSelect.value === "best_deal") elements.preSortSelect.value = "lowest_price";
-  elements.preHasCharm.disabled = isCsgoMarket;
-  elements.preHasCharm.closest("label").classList.toggle("is-disabled", isCsgoMarket);
-  if (isCsgoMarket) elements.preHasCharm.checked = false;
+  const marketplace = elements.preMarketplaceSelect.value;
+  const supportsBestDeal = MARKETPLACE_SUPPORTS_BEST_DEAL[marketplace];
+  const supportsCharmFilter = MARKETPLACE_SUPPORTS_CHARM_FILTER[marketplace];
+  elements.preBestDealOption.disabled = !supportsBestDeal;
+  if (!supportsBestDeal && elements.preSortSelect.value === "best_deal") elements.preSortSelect.value = "lowest_price";
+  elements.preHasCharm.disabled = !supportsCharmFilter;
+  elements.preHasCharm.closest("label").classList.toggle("is-disabled", !supportsCharmFilter);
+  if (!supportsCharmFilter) elements.preHasCharm.checked = false;
 }
 
 async function recalculateProfit() {
@@ -1335,19 +1356,25 @@ function updateProfitModeUi() {
   elements.profitDepositFeeControl.classList.toggle("is-disabled", !quickFlip);
 }
 
+// Picks any marketplace other than `current` (first one in MARKETPLACE_LABELS
+// order that differs), so buy/sell never silently end up on the same one.
+function otherMarketplace(current) {
+  return Object.keys(MARKETPLACE_LABELS).find((id) => id !== current) || current;
+}
+
 function keepProfitDirectionDistinct(changedControl) {
   if (elements.profitBuyMarketplace.value === "all") {
     elements.profitSellMarketplace.value = "auto";
     return;
   }
   if (elements.profitSellMarketplace.value === "auto") {
-    elements.profitSellMarketplace.value = elements.profitBuyMarketplace.value === "csfloat" ? "csgomarket" : "csfloat";
+    elements.profitSellMarketplace.value = otherMarketplace(elements.profitBuyMarketplace.value);
     return;
   }
   if (elements.profitBuyMarketplace.value !== elements.profitSellMarketplace.value) return;
-  const otherMarketplace = changedControl.value === "csfloat" ? "csgomarket" : "csfloat";
-  if (changedControl === elements.profitBuyMarketplace) elements.profitSellMarketplace.value = otherMarketplace;
-  else elements.profitBuyMarketplace.value = otherMarketplace;
+  const fallback = otherMarketplace(changedControl.value);
+  if (changedControl === elements.profitBuyMarketplace) elements.profitSellMarketplace.value = fallback;
+  else elements.profitBuyMarketplace.value = fallback;
 }
 
 function swapProfitMarkets() {

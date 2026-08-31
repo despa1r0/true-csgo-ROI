@@ -18,6 +18,11 @@ from .market_data import (
     get_csfloat_listing_quick_sell,
     get_csfloat_skin_listings,
     get_csfloat_variant_details,
+    get_whitemarket_prices,
+    get_whitemarket_skin_listings,
+    get_whitemarket_variant_details,
+    get_whitemarket_variant_listings,
+    get_whitemarket_variant_quick_sell,
 )
 from .marketplaces_fees import MARKETPLACES, FeeRule
 from .models import CalculationRequest, CatalogueSearchResult
@@ -70,6 +75,60 @@ def skin_csfloat_prices(skin_id: str):
     if get_skin(skin_id) is None:
         raise HTTPException(status_code=404, detail="Скин не найден")
     return get_csfloat_prices(skin_id)
+
+
+@app.get("/api/skins/{skin_id}/market/whitemarket")
+def skin_whitemarket_prices(skin_id: str):
+    if get_skin(skin_id) is None:
+        raise HTTPException(status_code=404, detail="Скин не найден")
+    return get_whitemarket_prices(skin_id)
+
+
+@app.get("/api/skins/{skin_id}/market/whitemarket/listings")
+def skin_whitemarket_listings(
+    skin_id: str,
+    sort_by: Literal["best_deal", "lowest_price"] = "lowest_price",
+    wear: Literal[
+        "factory-new",
+        "minimal-wear",
+        "field-tested",
+        "well-worn",
+        "battle-scarred",
+    ]
+    | None = None,
+    variant: Literal["any", "normal", "stattrak", "souvenir"] = "any",
+    min_float: float | None = Query(default=None, ge=0, le=1),
+    max_float: float | None = Query(default=None, ge=0, le=1),
+    min_price_cents: int | None = Query(default=None, ge=0),
+    max_price_cents: int | None = Query(default=None, ge=0),
+    has_stickers: bool = False,
+    has_charm: bool = False,
+    limit: int = Query(default=30, ge=1, le=50),
+):
+    if min_float is not None and max_float is not None and min_float > max_float:
+        raise HTTPException(status_code=422, detail="Минимальный float больше максимального")
+    if (
+        min_price_cents is not None
+        and max_price_cents is not None
+        and min_price_cents > max_price_cents
+    ):
+        raise HTTPException(status_code=422, detail="Минимальная цена больше максимальной")
+    result = get_whitemarket_skin_listings(
+        skin_id,
+        sort_by=sort_by,
+        wear=wear,
+        variant=variant,
+        min_float=min_float,
+        max_float=max_float,
+        min_price_cents=min_price_cents,
+        max_price_cents=max_price_cents,
+        has_stickers=has_stickers,
+        has_charm=has_charm,
+        limit=limit,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Скин не найден")
+    return result
 
 
 @app.get("/api/skins/{skin_id}/market/csgomarket")
@@ -198,6 +257,56 @@ def variant_csfloat_details(variant_id: str):
     if details is None:
         raise HTTPException(status_code=404, detail="Вариант скина не найден")
     return details
+
+
+@app.get("/api/variants/{variant_id}/market/whitemarket")
+def variant_whitemarket_details(variant_id: str):
+    details = get_whitemarket_variant_details(variant_id)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Вариант скина не найден")
+    return details
+
+
+@app.get("/api/variants/{variant_id}/market/whitemarket/listings")
+def variant_whitemarket_listings(
+    variant_id: str,
+    min_float: float | None = Query(default=None, ge=0, le=1),
+    max_float: float | None = Query(default=None, ge=0, le=1),
+    min_price_cents: int | None = Query(default=None, ge=0),
+    max_price_cents: int | None = Query(default=None, ge=0),
+    has_stickers: bool = False,
+    has_charm: bool = False,
+    limit: int = Query(default=30, ge=1, le=50),
+):
+    if min_float is not None and max_float is not None and min_float > max_float:
+        raise HTTPException(status_code=422, detail="Минимальный float больше максимального")
+    if (
+        min_price_cents is not None
+        and max_price_cents is not None
+        and min_price_cents > max_price_cents
+    ):
+        raise HTTPException(status_code=422, detail="Минимальная цена больше максимальной")
+    result = get_whitemarket_variant_listings(
+        variant_id,
+        min_float=min_float,
+        max_float=max_float,
+        min_price_cents=min_price_cents,
+        max_price_cents=max_price_cents,
+        has_stickers=has_stickers,
+        has_charm=has_charm,
+        limit=limit,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Вариант скина не найден")
+    return result
+
+
+@app.get("/api/variants/{variant_id}/market/whitemarket/quick-sell")
+def variant_whitemarket_quick_sell(variant_id: str):
+    result = get_whitemarket_variant_quick_sell(variant_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Вариант скина не найден")
+    return result
 
 
 @app.get("/api/variants/{variant_id}/market/csgomarket")

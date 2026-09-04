@@ -1,0 +1,33 @@
+.placeholder {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 48rem;
+  min-height: 17rem;
+  align-content: center;
+}
+
+.placeholder h1,
+.placeholder p {
+  margin: 0;
+}
+
+.placeholder h1 {
+  font-size: clamp(2rem, 6vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.placeholder p {
+  max-width: 38rem;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  line-height: 1.7;
+}
+
+.eyebrow {
+  color: var(--color-accent-cyan);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}

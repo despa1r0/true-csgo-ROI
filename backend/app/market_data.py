@@ -30,7 +30,7 @@ from .marketplaces.whitemarket import get_cheapest_listing as get_whitemarket_ch
 MARKETPLACE = "CSFloat"
 WHITEMARKET_MARKETPLACE = "WhiteMarket"
 DEFAULT_CACHE_TTL_SECONDS = 300
-DEFAULT_DETAILS_TTL_SECONDS = 120
+DEFAULT_DETAILS_TTL_SECONDS = 600
 DETAILS_VERSION = 3
 WEAR_FLOAT_RANGES = {
     "factory-new": (0.0, 0.07),
@@ -494,20 +494,39 @@ def get_csfloat_skin_listings(
     """Return concrete CSFloat listings for one local catalogue skin."""
     with get_connection() as connection:
         skin = connection.execute(
-            "SELECT id, name, image_url, paint_index, min_float, max_float "
+            "SELECT id, name, item_type, image_url, paint_index, min_float, max_float "
             "FROM skins WHERE id = %s",
             (skin_id,),
         ).fetchone()
         if skin is None:
             return None
-        variants = {
-            row["market_hash_name"]: row["id"]
-            for row in connection.execute(
-                "SELECT id, market_hash_name FROM skin_variants "
+        variant_rows = list(
+            connection.execute(
+                "SELECT id, market_hash_name, wear_name, stattrak, souvenir, image_url "
+                "FROM skin_variants "
                 "WHERE skin_id = %s AND market_hash_name IS NOT NULL",
                 (skin_id,),
             ).fetchall()
+        )
+        variants = {
+            row["market_hash_name"]: row["id"] for row in variant_rows
         }
+
+    if skin.get("item_type", "skin") != "skin":
+        return _get_csfloat_exact_item_listings(
+            skin,
+            variant_rows,
+            sort_by=sort_by,
+            wear=wear,
+            variant=variant,
+            min_float=min_float,
+            max_float=max_float,
+            min_price_cents=min_price_cents,
+            max_price_cents=max_price_cents,
+            has_stickers=has_stickers,
+            has_charm=has_charm,
+            limit=limit,
+        )
 
     try:
         paint_index = int(skin["paint_index"])
@@ -570,6 +589,91 @@ def get_csfloat_skin_listings(
         "sort_by": sort_by,
         "listings": listings,
         "error": None,
+    }
+
+
+def _get_csfloat_exact_item_listings(
+    item: dict[str, Any],
+    variants: list[dict[str, Any]],
+    *,
+    sort_by: str,
+    wear: str | None,
+    variant: str,
+    min_float: float | None,
+    max_float: float | None,
+    min_price_cents: int | None,
+    max_price_cents: int | None,
+    has_stickers: bool,
+    has_charm: bool,
+    limit: int,
+) -> dict[str, Any]:
+    """Load non-skin listings by exact market name instead of paint index."""
+    expected_wear = WEAR_NAME_BY_SLUG.get(wear) if wear else None
+    selected_variants = [
+        row
+        for row in variants
+        if (expected_wear is None or row.get("wear_name") == expected_wear)
+        and (
+            variant == "any"
+            or (
+                variant == "normal"
+                and not row.get("stattrak")
+                and not row.get("souvenir")
+            )
+            or (variant == "stattrak" and row.get("stattrak"))
+            or (variant == "souvenir" and row.get("souvenir"))
+        )
+    ]
+    listings: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for row in selected_variants:
+        try:
+            raw_listings = get_active_listings(
+                row["market_hash_name"], limit=min(limit, 10)
+            )
+        except CsfloatRequestError as error:
+            errors.append(str(error))
+            continue
+        for listing in raw_listings:
+            price_cents = listing.get("price_cents")
+            float_value = listing.get("float_value")
+            if min_price_cents is not None and (
+                price_cents is None or int(price_cents) < min_price_cents
+            ):
+                continue
+            if max_price_cents is not None and (
+                price_cents is None or int(price_cents) > max_price_cents
+            ):
+                continue
+            if min_float is not None and (
+                float_value is None or float(float_value) < min_float
+            ):
+                continue
+            if max_float is not None and (
+                float_value is None or float(float_value) > max_float
+            ):
+                continue
+            if has_stickers and not listing.get("stickers"):
+                continue
+            if has_charm and not listing.get("charms"):
+                continue
+            listing["marketplace"] = MARKETPLACE
+            listing["marketplace_id"] = "csfloat"
+            listing["market_hash_name"] = row["market_hash_name"]
+            listing["variant_id"] = row["id"]
+            listing["wear_name"] = row.get("wear_name")
+            listing["image_url"] = row.get("image_url") or item.get("image_url")
+            listing["item_name"] = item["name"]
+            listings.append(listing)
+
+    listings.sort(key=lambda listing: int(listing["price_cents"]))
+    return {
+        "marketplace": MARKETPLACE,
+        "sort_by": "lowest_price",
+        "requested_sort_by": sort_by,
+        "listings": listings[:limit],
+        "error": errors[0] if errors and not listings else None,
+        "partial_error": errors[0] if errors and listings else None,
     }
 
 

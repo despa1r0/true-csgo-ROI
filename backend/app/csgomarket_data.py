@@ -24,7 +24,7 @@ from .market_data import LIQUIDITY_METHOD, calculate_liquidity
 
 MARKETPLACE = "CSGO Market"
 DEFAULT_CACHE_TTL_SECONDS = 300
-DEFAULT_DETAILS_TTL_SECONDS = 120
+DEFAULT_DETAILS_TTL_SECONDS = 600
 DETAILS_VERSION = 1
 WEAR_NAMES = {
     "factory-new": "Factory New",

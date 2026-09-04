@@ -131,7 +131,7 @@ def compare_market_responses(
             if len(available) >= 2
             else None
         )
-        variant["opportunities"] = _profit_directions(
+        opportunities = _profit_directions(
             variant["variant_id"],
             available,
             deposit_method=deposit_method,
@@ -140,6 +140,14 @@ def compare_market_responses(
             profit_mode=profit_mode,
             quick_sell_prices=quick_sell_prices or {},
         )
+        # Keep the exact market variant attached to every calculation.  A wear
+        # group can contain Normal, StatTrak and Souvenir variants with very
+        # different prices; consumers must not present one variant's profit
+        # next to another variant's ask.
+        for opportunity in opportunities:
+            opportunity["variant_id"] = variant["variant_id"]
+            opportunity["market_hash_name"] = variant["market_hash_name"]
+        variant["opportunities"] = opportunities
         variant["quick_flip_errors"] = {
             marketplace: result["error"]
             for marketplace, result in (quick_sell_prices or {})
@@ -173,30 +181,57 @@ def _profit_directions(
     if len(available) < 2:
         return []
     if profit_mode == "quick_flip":
-        buy_marketplace, buy_listing = available[0]
-        sell_marketplace, _sell_listing = available[1]
-        fast_buy = quick_sell_prices.get(variant_id, {}).get(sell_marketplace, {})
-        sell_price_cents = fast_buy.get("best_price_cents")
-        if sell_price_cents is None:
-            return []
-        return [
-            _calculate_direction(
-                buy_marketplace,
-                sell_marketplace,
-                buy_listing["price_cents"],
-                sell_price_cents,
-                deposit_method=deposit_method,
-                withdraw_method=withdraw_method,
-                use_deposit_fee=use_deposit_fee,
-                profit_mode=profit_mode,
-                sell_mode="fast_buy",
-            )
-        ]
+        opportunities = []
+        for buy_marketplace, buy_listing in available:
+            for sell_marketplace, _sell_listing in available:
+                if buy_marketplace == sell_marketplace:
+                    continue
+                if not MARKETPLACES[sell_marketplace].supports_fast_buy:
+                    continue
+                if not _direction_supports_fees(
+                    buy_marketplace,
+                    sell_marketplace,
+                    deposit_method=deposit_method,
+                    withdraw_method=withdraw_method,
+                    use_deposit_fee=use_deposit_fee,
+                    profit_mode=profit_mode,
+                ):
+                    continue
+                fast_buy = quick_sell_prices.get(variant_id, {}).get(
+                    sell_marketplace, {}
+                )
+                sell_price_cents = fast_buy.get("best_price_cents")
+                if sell_price_cents is None:
+                    continue
+                opportunities.append(
+                    _calculate_direction(
+                        buy_marketplace,
+                        sell_marketplace,
+                        buy_listing["price_cents"],
+                        sell_price_cents,
+                        deposit_method=deposit_method,
+                        withdraw_method=withdraw_method,
+                        use_deposit_fee=use_deposit_fee,
+                        profit_mode=profit_mode,
+                        sell_mode="fast_buy",
+                    )
+                )
+        opportunities.sort(key=lambda item: item["profit_cents"], reverse=True)
+        return opportunities
 
     opportunities = []
     for buy_marketplace, buy_listing in available:
         for sell_marketplace, sell_listing in available:
             if buy_marketplace == sell_marketplace:
+                continue
+            if not _direction_supports_fees(
+                buy_marketplace,
+                sell_marketplace,
+                deposit_method=deposit_method,
+                withdraw_method=withdraw_method,
+                use_deposit_fee=use_deposit_fee,
+                profit_mode=profit_mode,
+            ):
                 continue
             opportunities.append(
                 _calculate_direction(
@@ -251,8 +286,34 @@ def _calculate_direction(
         "sell_marketplace": sell_marketplace,
         "profit_mode": profit_mode,
         "sell_mode": sell_mode,
+        "buy_price_source": "lowest_ask",
+        "sell_price_source": (
+            "best_bid" if sell_mode == "fast_buy" else "lowest_ask"
+        ),
         **result.model_dump(),
     }
+
+
+def _direction_supports_fees(
+    buy_marketplace: str,
+    sell_marketplace: str,
+    *,
+    deposit_method: str,
+    withdraw_method: str,
+    use_deposit_fee: bool,
+    profit_mode: str,
+) -> bool:
+    """Reject a direction when its selected payment method is unsupported."""
+    if profit_mode == "raw":
+        return True
+    buy_config = MARKETPLACES[buy_marketplace]
+    sell_config = MARKETPLACES[sell_marketplace]
+    if (
+        _effective_deposit_fee(profit_mode, use_deposit_fee)
+        and buy_config.fees.deposit.get(deposit_method) is None
+    ):
+        return False
+    return sell_config.fees.withdraw.get(withdraw_method) is not None
 
 
 def _effective_deposit_fee(profit_mode: str, requested: bool) -> bool:
@@ -279,12 +340,11 @@ def _load_quick_sell_prices(
     for variant_id, available in variants.items():
         if len(available) < 2:
             continue
-        available.sort(key=lambda pair: pair[1]["price_cents"])
-        sell_marketplace = available[1][0]
-
-        if not MARKETPLACES[sell_marketplace].supports_fast_buy:
-            continue
-        targets.append((variant_id, sell_marketplace))
+        targets.extend(
+            (variant_id, sell_marketplace)
+            for sell_marketplace, _listing in available
+            if MARKETPLACES[sell_marketplace].supports_fast_buy
+        )
 
     results: dict[str, dict[str, dict[str, Any]]] = {}
     with ThreadPoolExecutor(max_workers=min(3, len(targets) or 1)) as executor:

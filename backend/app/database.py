@@ -32,6 +32,7 @@ def ensure_schema(connection: Connection) -> None:
         CREATE TABLE IF NOT EXISTS skins (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
+            item_type TEXT NOT NULL DEFAULT 'skin',
             description TEXT,
             image_url TEXT,
             weapon_id TEXT,
@@ -71,8 +72,15 @@ def ensure_schema(connection: Connection) -> None:
         """
     )
     connection.execute(
+        "ALTER TABLE skins ADD COLUMN IF NOT EXISTS "
+        "item_type TEXT NOT NULL DEFAULT 'skin'"
+    )
+    connection.execute(
         "CREATE INDEX IF NOT EXISTS skins_name_trgm_idx "
         "ON skins USING GIN (LOWER(name) gin_trgm_ops)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS skins_item_type_idx ON skins (item_type)"
     )
     connection.execute(
         "CREATE INDEX IF NOT EXISTS skins_weapon_idx ON skins (weapon_name)"

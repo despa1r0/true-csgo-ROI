@@ -1,7 +1,13 @@
+import pytest
+
 from backend.app.catalog import _search_tokens
+from backend.app.main import app
 from backend.app.seed_catalog import (
+    _is_marketplace_catalog_item,
+    _specific_item_type,
     base_skin_name,
     prepare_catalog,
+    prepare_non_skin_catalog,
     prepare_skin_collections,
 )
 
@@ -78,3 +84,173 @@ def test_flattens_grouped_skin_collections():
             "image_url": "https://example.test/phoenix.png",
         }
     ]
+
+
+def test_normalizes_searchable_non_skin_items_and_market_variants():
+    items, variants = prepare_non_skin_catalog(
+        {
+            "sticker": [
+                {
+                    "id": "sticker-1",
+                    "name": "Sticker | Test",
+                    "market_hash_name": "Sticker | Test",
+                    "rarity": {
+                        "id": "rarity_rare",
+                        "name": "High Grade",
+                        "color": "#4b69ff",
+                    },
+                    "image": "https://example.test/sticker.png",
+                }
+            ],
+            "collectible": [
+                {
+                    "id": "collectible-1",
+                    "name": "Series 1 Genuine Pin",
+                    "type": "Pin",
+                    "market_hash_name": "Series 1 Genuine Pin",
+                }
+            ],
+        }
+    )
+
+    assert [item["item_type"] for item in items] == ["sticker", "pin"]
+    assert variants[0]["id"] == "catalog-variant-sticker-1"
+    assert variants[0]["market_hash_name"] == "Sticker | Test"
+    assert variants[0]["wear_name"] is None
+    assert variants[1]["skin_id"] == "collectible-1"
+
+
+def test_excludes_non_marketplace_rewards_predictions_and_unknown_sources():
+    items, variants = prepare_non_skin_catalog(
+        {
+            "sticker": [
+                {
+                    "id": "market-sticker",
+                    "name": "Sticker | Live",
+                    "market_hash_name": "Sticker | Live",
+                },
+                {
+                    "id": "inventory-only-sticker",
+                    "name": "Sticker Preview",
+                    "market_hash_name": None,
+                },
+            ],
+            "collectible": [
+                {
+                    "id": "operation-coin",
+                    "name": "Operation Test Coin",
+                    "type": "Operation Coin",
+                    "market_hash_name": "Operation Test Coin",
+                },
+                {
+                    "id": "genuine-pin",
+                    "name": "Genuine Test Pin",
+                    "type": "Pin",
+                    "genuine": True,
+                    "market_hash_name": "Genuine Test Pin",
+                },
+                {
+                    "id": "market-pin",
+                    "name": "Test Pin",
+                    "type": "Pin",
+                    "genuine": False,
+                    "market_hash_name": "Test Pin",
+                },
+            ],
+            "future_source": [
+                {
+                    "id": "predicted-item",
+                    "name": "Predicted Item",
+                    "market_hash_name": "Predicted Item",
+                }
+            ],
+        }
+    )
+
+    assert [item["id"] for item in items] == ["market-sticker", "market-pin"]
+    assert [variant["market_hash_name"] for variant in variants] == [
+        "Sticker | Live",
+        "Test Pin",
+    ]
+    assert len(items) == len(variants)
+
+
+def test_marketplace_catalog_marker_requires_explicit_market_hash_name():
+    assert _is_marketplace_catalog_item(
+        "agent",
+        {
+            "name": "Special Agent Ava",
+            "market_hash_name": "Special Agent Ava | FBI",
+        },
+    )
+    assert not _is_marketplace_catalog_item(
+        "agent", {"name": "Unreleased Agent", "market_hash_name": "  "}
+    )
+    assert not _is_marketplace_catalog_item(
+        "collectible",
+        {
+            "name": "Gold Prediction Trophy",
+            "type": "Pick'Em Trophy",
+            "market_hash_name": "Gold Prediction Trophy",
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("source_type", "name", "expected_item_type"),
+    [
+        ("container", "Kilowatt Case", "case"),
+        ("sticker", "Sticker | Test", "sticker"),
+        ("charm", "Charm | Test", "charm"),
+        ("agent", "Special Agent Test | FBI", "agent"),
+        ("music_kit", "Music Kit | Test", "music_kit"),
+        ("patch", "Patch | Test", "patch"),
+        ("graffiti", "Sealed Graffiti | Test", "graffiti"),
+        ("sticker_slab", "Sticker Slab | Test", "sticker_slab"),
+        (
+            "souvenir_charm",
+            "Souvenir Charm | Test Highlight",
+            "souvenir_charm",
+        ),
+    ],
+)
+def test_keeps_supported_exact_name_marketplace_item_types(
+    source_type, name, expected_item_type
+):
+    items, variants = prepare_non_skin_catalog(
+        {
+            source_type: [
+                {
+                    "id": f"{source_type}-1",
+                    "name": name,
+                    "market_hash_name": name,
+                }
+            ]
+        }
+    )
+
+    assert [item["item_type"] for item in items] == [expected_item_type]
+    assert [variant["market_hash_name"] for variant in variants] == [name]
+
+
+def test_splits_container_types_for_catalogue_filtering():
+    assert _specific_item_type("container", {"name": "Kilowatt Case"}) == "case"
+    assert (
+        _specific_item_type("container", {"name": "Austin 2025 Souvenir Package"})
+        == "souvenir_package"
+    )
+    assert (
+        _specific_item_type("container", {"name": "Paris 2023 Legends Sticker Capsule"})
+        == "capsule"
+    )
+
+
+def test_complete_catalog_search_exposes_item_type_filter():
+    parameters = {
+        parameter["name"]
+        for parameter in app.openapi()["paths"]["/api/items/search"]["get"][
+            "parameters"
+        ]
+    }
+
+    assert {"q", "item_type", "weapon", "rarity", "collection", "limit"} <= parameters

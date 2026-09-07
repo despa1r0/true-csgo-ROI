@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [develop, main]
+  workflow_dispatch:
 
 jobs:
   backend-tests:

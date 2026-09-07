@@ -1,0 +1,51 @@
+{
+  "app": { "name": "trueROI", "homeLabel": "Главная trueROI", "navigationLabel": "Основная навигация", "online": "API доступен", "offline": "API недоступен", "skins": "Предметов: {{count}}" },
+  "navigation": { "catalog": "Рынок", "calculator": "Калькулятор профита" },
+  "language": { "switchLabel": "Переключить язык на {{language}}" },
+  "common": { "loading": "Загрузка…", "retry": "Повторить", "reset": "Сбросить", "apply": "Применить", "close": "Закрыть", "back": "Назад", "noData": "Нет данных", "open": "Открыть площадку", "cached": "Данные из кеша", "live": "Актуальные данные", "all": "Все", "custom": "Настроенный" },
+  "catalog": {
+    "eyebrow": "АНАЛИТИКА РЫНКА CS2", "title": "Найдите разницу. Посчитайте реальную прибыль.",
+    "subtitle": "Сравнивайте реальные лоты, комиссии, заявки на быструю покупку и историю продаж на площадках CS2.",
+    "search": "Поиск предметов", "searchPlaceholder": "Скин, кейс, наклейка, charm, агент…", "searchHint": "Введите минимум 2 символа или выберите фильтр каталога.",
+    "itemType": "Тип предмета", "weapon": "Оружие", "rarity": "Редкость", "collection": "Коллекция", "any": "Любое", "results": "Найдено: {{count}}", "variants": "Рыночных вариантов: {{count}}",
+    "selected": "Выбранный скин", "conditions": "Степени износа", "conditionsHint": "Выберите качество, чтобы посмотреть активные лоты.",
+    "noConditions": "Нет вариантов, соответствующих фильтрам.", "marketFrom": "От {{price}}", "noPrice": "Нет цены", "marketError": "Сравнение площадок временно недоступно.", "marketFeeds": "рыночных источника", "standard": "Стандартный предмет", "marketDataUnavailable": "У этого предмета нет продаваемого варианта, поэтому аналитика площадок недоступна."
+  },
+  "catalogTypes": { "skin": "Скин", "case": "Кейс", "container": "Контейнер", "capsule": "Капсула", "sticker": "Наклейка", "sticker_slab": "Футляр наклейки", "charm": "Charm", "souvenir_charm": "Сувенирный charm", "agent": "Агент", "souvenir_package": "Сувенирный набор", "collectible": "Коллекционный предмет", "pin": "Значок", "music_kit": "Музыкальный набор", "music_kit_box": "Контейнер музыки", "patch": "Нашивка", "graffiti": "Граффити", "graffiti_box": "Контейнер граффити", "key": "Ключ", "tool": "Инструмент" },
+  "profit": {
+    "settings": "НАСТРОЙКИ ROI", "mode": "Режим", "buyOn": "Купить на", "sellOn": "Продать на", "auto": "Авто", "swap": "Поменять площадки местами",
+    "deposit": "Пополнение", "withdraw": "Вывод", "card": "Карта", "crypto": "Крипто", "includeDeposit": "Учитывать пополнение",
+    "raw": "Raw · без комиссий", "smart": "Smart · все комиссии", "enhanced": "Enhanced · без пополнения", "quick_flip": "Quick flip · лучший bid", "custom": "Настроенные комиссии"
+  },
+  "listings": {
+    "title": "Активные лоты", "subtitle": "{{wear}} · {{market}}", "marketplace": "Площадка", "sort": "Сортировка", "bestDeal": "Лучшая сделка", "lowest": "Сначала дешевле",
+    "variant": "Вариант", "normal": "Обычный", "stattrak": "StatTrak™", "souvenir": "Souvenir", "float": "Диапазон float", "price": "Диапазон цены, USD",
+    "stickers": "Есть наклейки", "charms": "Есть charm", "show": "Показать лоты", "count": "Лотов: {{count}}", "none": "Нет лотов, соответствующих фильтрам.",
+    "allMarketplaces": "Все доступные площадки", "subtitleAll": "{{wear}} · все доступные площадки", "marketHeading": "Лоты на {{market}}", "noMarketplaces": "Сейчас ни одна площадка не поддерживает активные лоты для этого предмета.", "noneOnMarket": "На {{market}} нет активных лотов с такими фильтрами.",
+    "filterUnsupportedTitle": "Фильтр недоступен", "filterUnsupportedMarket": "{{market}} не умеет применять: {{filters}}. Результаты других площадок остаются видимыми.", "providerError": "{{market}} временно недоступен", "providerErrorHint": "Остальные площадки продолжат работать. Этот источник можно повторить отдельно.", "paintIndexUnavailableTitle": "Для предмета недоступен поиск по paint index", "paintIndexUnavailable": "Для поиска лотов на {{market}} требуется paint index. Попробуйте другую площадку из списка.",
+    "filtersUnsupported": "Эта площадка не поддерживает данный фильтр.", "noStickers": "Без наклеек", "details": "Открыть аналитику", "estimate": "Оценка {{price}}"
+  },
+  "analytics": {
+    "title": "Аналитика скина", "history": "История продаж", "active": "Активные лоты", "quick": "Быстрая продажа", "compare": "Сравнение",
+    "available": "Доступная история", "points": "Реальных продаж: {{count}}", "historyUnavailable": "Площадка не предоставляет публичную историю продаж.",
+    "historyEmpty": "За выбранный период реальные продажи не получены.", "period24h": "24Ч", "period7d": "7Д", "period14d": "14Д", "periodAll": "Доступная",
+    "minPrice": "Минимальный ask", "bestBid": "Лучший bid", "liquidity": "Ликвидность", "salesDay": "Продаж в день", "bidDepth": "Глубина bid", "updated": "Обновлено {{date}}",
+    "date": "Дата", "price": "Цена", "quantity": "Количество", "conditions": "Условия", "market": "Площадка", "notSupported": "Не поддерживается этой площадкой",
+    "buy": "Покупка", "sell": "Продажа", "netProfit": "Чистая прибыль", "roi": "Cash ROI", "selectedListing": "ВЫБРАННЫЙ ЛОТ", "backToListings": "Назад к лотам", "attachments": "Наклейки / charms", "buyPreview": "Предмет покупки", "sellPreview": "Предмет продажи",
+    "sourceNote": "Каждая точка — реальная продажа, возвращённая площадкой. Синтетические значения не создаются.", "stale": "устаревший кеш", "quoteUnavailable": "Метаданные котировки недоступны.", "quickUnavailable": "Выбранная площадка не поддерживает заявки на быструю продажу."
+  },
+  "calculator": {
+    "eyebrow": "РУЧНАЯ МОДЕЛЬ СДЕЛКИ", "title": "Калькулятор профита", "subtitle": "Укажите фактические цены покупки и продажи. Ставки комиссий контролируются сервером.",
+    "optionalSkin": "Предмет для ориентира — необязательно", "skinPlaceholder": "Найдите предмет, чтобы добавить рыночный ориентир…", "clearSkin": "Убрать ориентир", "marketReference": "Рыночный ориентир",
+    "buyPrice": "Фактическая цена покупки", "sellPrice": "Ожидаемая цена продажи", "manual": "Введено вручную", "useQuote": "Подставить {{price}}", "buyMarket": "Площадка покупки", "sellMarket": "Площадка продажи",
+    "sellType": "Тип продажи", "listing": "Обычный листинг", "fastBuy": "Продажа в лучший bid", "fees": "Учитываемые комиссии", "feeLocked": "Ставки задаются сервером и недоступны для редактирования.",
+    "depositFee": "Комиссия пополнения", "sellFee": "Комиссия продажи", "withdrawFee": "Комиссия вывода", "calculate": "Рассчитать прибыль", "invalidMoney": "Введите корректную неотрицательную сумму USD, не более двух знаков после запятой.",
+    "result": "Результат сделки", "effectiveBuy": "Фактические затраты", "effectivePayout": "Сумма к получению", "grossProfit": "Разница без комиссий", "marketProfit": "После комиссии продажи", "netProfit": "Чистая прибыль",
+    "grossRoi": "Gross ROI", "marketRoi": "Market ROI", "cashRoi": "Cash ROI", "breakEven": "Цена безубыточности", "positive": "Прибыльная сделка", "negative": "Убыток", "neutral": "Безубыточность",
+    "savings": "Покупка дешевле текущего рыночного ориентира на {{amount}} ({{percent}}%).", "noReference": "Выберите скин, чтобы сравнить ручную цену с актуальными предложениями.", "serverError": "Не удалось рассчитать сделку. Проверьте возможности площадок и способы оплаты.",
+    "variant": "Вариант скина", "comparisonTitle": "Фактическая сделка и рыночный ориентир", "actualBuyResult": "Результат вашей покупки", "referenceBuyResult": "Результат по рыночной цене", "extraProfit": "Дополнительная прибыль сделки", "roiDelta": "Разница ROI", "referenceError": "Не удалось рассчитать результат по рыночному ориентиру."
+  },
+  "attachments": { "sticker": "Наклейка", "charm": "Charm", "referencePrice": "Справочная цена", "priceUnavailable": "Цена недоступна" },
+  "actions": { "returnHome": "Вернуться на главную" },
+  "errors": { "route": { "title": "Страница недоступна", "description": "Не удалось загрузить запрошенную страницу." } }
+}

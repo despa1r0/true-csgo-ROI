@@ -259,4 +259,4 @@ def test_private_rate_limiter_spaces_calls_and_caps_config(monkeypatch):
     csgomarket._wait_for_private_request_slot()
     csgomarket._wait_for_private_request_slot()
 
-    assert sleeps == [0.26, 0.52]
+    assert sleeps == [2.01, 4.02]

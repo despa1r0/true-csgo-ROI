@@ -24,12 +24,13 @@ def search_skins(
     weapon: str | None = None,
     rarity: str | None = None,
     collection: str | None = None,
+    item_type: str | None = None,
     limit: int = 8,
 ) -> list[dict[str, Any]]:
     normalized = " ".join(query.strip().split())
     if normalized and len(normalized) < 2:
         return []
-    if not normalized and not any((weapon, rarity, collection)):
+    if not normalized and not any((weapon, rarity, collection, item_type)):
         return []
 
     # Item names contain separators such as ``|`` and ``-``. Searching each
@@ -61,6 +62,9 @@ def search_skins(
             "WHERE sc.skin_id = s.id AND sc.collection_id = %s)"
         )
         parameters.append(collection)
+    if item_type:
+        conditions.append("s.item_type = %s")
+        parameters.append(item_type)
 
     if normalized:
         order_by = """
@@ -80,6 +84,7 @@ def search_skins(
         SELECT
             s.id,
             s.name,
+            s.item_type,
             s.image_url,
             s.weapon_id,
             s.weapon_name,
@@ -111,7 +116,7 @@ def get_skin(skin_id: str) -> dict[str, Any] | None:
     with get_connection() as connection:
         skin = connection.execute(
             """
-            SELECT id, name, description, image_url, weapon_id, weapon_name,
+            SELECT id, name, item_type, description, image_url, weapon_id, weapon_name,
                    category_id, category_name, pattern_id, pattern_name,
                    rarity_id, rarity_name, rarity_color, min_float, max_float,
                    paint_index, has_stattrak, has_souvenir
@@ -148,7 +153,7 @@ def get_skin(skin_id: str) -> dict[str, Any] | None:
 
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for variant in variants:
-        grouped[variant["wear_name"] or "Без качества"].append(variant)
+        grouped[variant["wear_name"] or "Standard"].append(variant)
 
     qualities = [
         {"wear": wear, "variants": sorted(items, key=_variant_order)}
@@ -199,7 +204,22 @@ def get_catalog_filters() -> dict[str, list[dict[str, Any]]]:
                 """
             ).fetchall()
         )
-    return {"weapons": weapons, "rarities": rarities, "collections": collections}
+        item_types = list(
+            connection.execute(
+                """
+                SELECT item_type AS id, item_type AS name, COUNT(*)::INTEGER AS count
+                FROM skins
+                GROUP BY item_type
+                ORDER BY item_type
+                """
+            ).fetchall()
+        )
+    return {
+        "weapons": weapons,
+        "rarities": rarities,
+        "collections": collections,
+        "item_types": item_types,
+    }
 
 
 def catalogue_size() -> dict[str, int]:

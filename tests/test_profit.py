@@ -21,6 +21,8 @@ def test_calculates_all_fee_rules_and_three_roi_levels():
     assert result.market_roi_percent == 3.32
     assert result.cash_roi_percent == 1.29
     assert result.roi_percent == 1.29
+    assert result.effective_buy_cents == 1858
+    assert result.effective_payout_cents == 1882
 
 
 def test_uses_fixed_fee_and_can_skip_deposit_fee():

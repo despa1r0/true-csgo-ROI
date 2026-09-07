@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from backend.app import csfloat
+from backend.app.marketplaces import csfloat
 from backend.app import market_data
 from backend.app.market_data import calculate_liquidity
 
@@ -96,6 +96,33 @@ def test_retries_one_rate_limited_request(monkeypatch):
     assert price is not None
     assert price.listing_id == "42"
     assert len(calls) == 2
+
+
+def test_rate_limit_delay_prefers_reset_header(monkeypatch):
+    monkeypatch.setattr(csfloat.time, "time", lambda: 1_700_000_000.0)
+
+    assert (
+        csfloat._rate_limit_delay(
+            {"X-RateLimit-Reset": "1700000008"}, attempt=0
+        )
+        == 8.0
+    )
+    assert csfloat._rate_limit_delay({}, attempt=2) == 4.0
+
+
+def test_rate_limit_routes_group_dynamic_item_identifiers():
+    assert (
+        csfloat._rate_limit_route(
+            "https://csfloat.com/api/v1/history/AK-47%20%7C%20Redline/sales"
+        )
+        == "/api/v1/history/:item/sales"
+    )
+    assert (
+        csfloat._rate_limit_route(
+            "https://csfloat.com/api/v1/listings/123/buy-orders?limit=10"
+        )
+        == "/api/v1/listings/:id/buy-orders"
+    )
 
 
 def test_loads_market_wide_price_index(monkeypatch):

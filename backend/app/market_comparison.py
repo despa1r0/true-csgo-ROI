@@ -9,7 +9,12 @@ from .csgomarket_data import (
     get_csgomarket_prices,
     get_csgomarket_variant_fast_buy,
 )
-from .market_data import get_csfloat_prices, get_csfloat_variant_fast_buy
+from .market_data import (
+    get_csfloat_prices,
+    get_csfloat_variant_fast_buy,
+    get_whitemarket_prices,
+    get_whitemarket_variant_quick_sell,
+)
 from .marketplaces_fees import MARKETPLACES, FeeRule
 from .profit import calculate_profit
 
@@ -17,8 +22,22 @@ from .profit import calculate_profit
 MARKET_RESPONSE_KEYS = {
     "CSFloat": "csfloat",
     "CSGO Market": "csgomarket",
+    "WhiteMarket": "whitemarket",
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
+
+
+def _fast_buy_function(marketplace: str):
+    """Look up the fast-buy/quick-sell function by module-level name at call
+    time (not a module-level dict of function objects) so tests can still
+    monkeypatch e.g. market_comparison.get_csfloat_variant_fast_buy."""
+    if marketplace == "csfloat":
+        return get_csfloat_variant_fast_buy
+    if marketplace == "csgomarket":
+        return get_csgomarket_variant_fast_buy
+    if marketplace == "whitemarket":
+        return get_whitemarket_variant_quick_sell
+    raise ValueError(f"No fast-buy function for marketplace: {marketplace}")
 
 
 def get_skin_market_comparison(
@@ -29,20 +48,23 @@ def get_skin_market_comparison(
     use_deposit_fee: bool = True,
     profit_mode: str = "smart",
 ) -> dict[str, Any]:
-    """Load both cached indexes concurrently and compare every exact variant."""
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    """Load all cached indexes concurrently and compare every exact variant."""
+    with ThreadPoolExecutor(max_workers=3) as executor:
         csfloat_future = executor.submit(get_csfloat_prices, skin_id)
         csgomarket_future = executor.submit(get_csgomarket_prices, skin_id)
+        whitemarket_future = executor.submit(get_whitemarket_prices, skin_id)
         csfloat = csfloat_future.result()
         csgomarket = csgomarket_future.result()
+        whitemarket = whitemarket_future.result()
+    market_responses = [csfloat, csgomarket, whitemarket]
     quick_sell_prices = (
-        _load_quick_sell_prices([csfloat, csgomarket])
+        _load_quick_sell_prices(market_responses)
         if profit_mode == "quick_flip"
         else None
     )
     return compare_market_responses(
         skin_id,
-        [csfloat, csgomarket],
+        market_responses,
         deposit_method=deposit_method,
         withdraw_method=withdraw_method,
         use_deposit_fee=use_deposit_fee,
@@ -109,7 +131,7 @@ def compare_market_responses(
             if len(available) >= 2
             else None
         )
-        variant["opportunities"] = _profit_directions(
+        opportunities = _profit_directions(
             variant["variant_id"],
             available,
             deposit_method=deposit_method,
@@ -118,6 +140,14 @@ def compare_market_responses(
             profit_mode=profit_mode,
             quick_sell_prices=quick_sell_prices or {},
         )
+        # Keep the exact market variant attached to every calculation.  A wear
+        # group can contain Normal, StatTrak and Souvenir variants with very
+        # different prices; consumers must not present one variant's profit
+        # next to another variant's ask.
+        for opportunity in opportunities:
+            opportunity["variant_id"] = variant["variant_id"]
+            opportunity["market_hash_name"] = variant["market_hash_name"]
+        variant["opportunities"] = opportunities
         variant["quick_flip_errors"] = {
             marketplace: result["error"]
             for marketplace, result in (quick_sell_prices or {})
@@ -151,30 +181,57 @@ def _profit_directions(
     if len(available) < 2:
         return []
     if profit_mode == "quick_flip":
-        buy_marketplace, buy_listing = available[0]
-        sell_marketplace, _sell_listing = available[1]
-        fast_buy = quick_sell_prices.get(variant_id, {}).get(sell_marketplace, {})
-        sell_price_cents = fast_buy.get("best_price_cents")
-        if sell_price_cents is None:
-            return []
-        return [
-            _calculate_direction(
-                buy_marketplace,
-                sell_marketplace,
-                buy_listing["price_cents"],
-                sell_price_cents,
-                deposit_method=deposit_method,
-                withdraw_method=withdraw_method,
-                use_deposit_fee=use_deposit_fee,
-                profit_mode=profit_mode,
-                sell_mode="fast_buy",
-            )
-        ]
+        opportunities = []
+        for buy_marketplace, buy_listing in available:
+            for sell_marketplace, _sell_listing in available:
+                if buy_marketplace == sell_marketplace:
+                    continue
+                if not MARKETPLACES[sell_marketplace].supports_fast_buy:
+                    continue
+                if not _direction_supports_fees(
+                    buy_marketplace,
+                    sell_marketplace,
+                    deposit_method=deposit_method,
+                    withdraw_method=withdraw_method,
+                    use_deposit_fee=use_deposit_fee,
+                    profit_mode=profit_mode,
+                ):
+                    continue
+                fast_buy = quick_sell_prices.get(variant_id, {}).get(
+                    sell_marketplace, {}
+                )
+                sell_price_cents = fast_buy.get("best_price_cents")
+                if sell_price_cents is None:
+                    continue
+                opportunities.append(
+                    _calculate_direction(
+                        buy_marketplace,
+                        sell_marketplace,
+                        buy_listing["price_cents"],
+                        sell_price_cents,
+                        deposit_method=deposit_method,
+                        withdraw_method=withdraw_method,
+                        use_deposit_fee=use_deposit_fee,
+                        profit_mode=profit_mode,
+                        sell_mode="fast_buy",
+                    )
+                )
+        opportunities.sort(key=lambda item: item["profit_cents"], reverse=True)
+        return opportunities
 
     opportunities = []
     for buy_marketplace, buy_listing in available:
         for sell_marketplace, sell_listing in available:
             if buy_marketplace == sell_marketplace:
+                continue
+            if not _direction_supports_fees(
+                buy_marketplace,
+                sell_marketplace,
+                deposit_method=deposit_method,
+                withdraw_method=withdraw_method,
+                use_deposit_fee=use_deposit_fee,
+                profit_mode=profit_mode,
+            ):
                 continue
             opportunities.append(
                 _calculate_direction(
@@ -229,8 +286,34 @@ def _calculate_direction(
         "sell_marketplace": sell_marketplace,
         "profit_mode": profit_mode,
         "sell_mode": sell_mode,
+        "buy_price_source": "lowest_ask",
+        "sell_price_source": (
+            "best_bid" if sell_mode == "fast_buy" else "lowest_ask"
+        ),
         **result.model_dump(),
     }
+
+
+def _direction_supports_fees(
+    buy_marketplace: str,
+    sell_marketplace: str,
+    *,
+    deposit_method: str,
+    withdraw_method: str,
+    use_deposit_fee: bool,
+    profit_mode: str,
+) -> bool:
+    """Reject a direction when its selected payment method is unsupported."""
+    if profit_mode == "raw":
+        return True
+    buy_config = MARKETPLACES[buy_marketplace]
+    sell_config = MARKETPLACES[sell_marketplace]
+    if (
+        _effective_deposit_fee(profit_mode, use_deposit_fee)
+        and buy_config.fees.deposit.get(deposit_method) is None
+    ):
+        return False
+    return sell_config.fees.withdraw.get(withdraw_method) is not None
 
 
 def _effective_deposit_fee(profit_mode: str, requested: bool) -> bool:
@@ -257,19 +340,19 @@ def _load_quick_sell_prices(
     for variant_id, available in variants.items():
         if len(available) < 2:
             continue
-        available.sort(key=lambda pair: pair[1]["price_cents"])
-        sell_marketplace = available[1][0]
-        targets.append((variant_id, sell_marketplace))
+        targets.extend(
+            (variant_id, sell_marketplace)
+            for sell_marketplace, _listing in available
+            if MARKETPLACES[sell_marketplace].supports_fast_buy
+        )
 
     results: dict[str, dict[str, dict[str, Any]]] = {}
     with ThreadPoolExecutor(max_workers=min(3, len(targets) or 1)) as executor:
         futures = {
-            executor.submit(
-                get_csfloat_variant_fast_buy
-                if marketplace == "csfloat"
-                else get_csgomarket_variant_fast_buy,
+            executor.submit(_fast_buy_function(marketplace), variant_id): (
                 variant_id,
-            ): (variant_id, marketplace)
+                marketplace,
+            )
             for variant_id, marketplace in targets
         }
         for future, (variant_id, marketplace) in futures.items():

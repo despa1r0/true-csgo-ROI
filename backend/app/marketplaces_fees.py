@@ -20,19 +20,38 @@ class MarketplaceFees:
 class MarketplaceConfig:
     """Operations supported by a marketplace and its current fee rules."""
 
+    display_name: str
+    currency: str
     can_buy: bool
     can_sell: bool
     supports_fast_buy: bool
+    supports_listings: bool
+    supports_sales_history: bool
+    supports_float: bool
+    supports_stickers: bool
+    supports_charms: bool
+    supports_best_deal_sort: bool
     fees: MarketplaceFees
+
+
+FEE_CONFIGURATION_VERSION = "2026-09-04"
 
 
 # This is the single registry a new marketplace needs to join.  The API/UI use
 # its capabilities to decide where a user may buy, sell, or fast-sell.
 MARKETPLACES = {
     "csfloat": MarketplaceConfig(
+        display_name="CSFloat",
+        currency="USD",
         can_buy=True,
         can_sell=True,
         supports_fast_buy=True,
+        supports_listings=True,
+        supports_sales_history=True,
+        supports_float=True,
+        supports_stickers=True,
+        supports_charms=True,
+        supports_best_deal_sort=True,
         fees=MarketplaceFees(
             deposit={
                 "crypto": FeeRule(percent=1),
@@ -46,9 +65,17 @@ MARKETPLACES = {
         ),
     ),
     "csgomarket": MarketplaceConfig(
+        display_name="CSGO Market",
+        currency="USD",
         can_buy=True,
         can_sell=True,
         supports_fast_buy=True,
+        supports_listings=True,
+        supports_sales_history=True,
+        supports_float=True,
+        supports_stickers=True,
+        supports_charms=False,
+        supports_best_deal_sort=False,
         fees=MarketplaceFees(
             deposit={
                 "crypto": FeeRule(fixed_cents=100),
@@ -62,9 +89,17 @@ MARKETPLACES = {
         ),
     ),
     "csmoney": MarketplaceConfig(
+        display_name="CS.MONEY",
+        currency="USD",
         can_buy=True,
         can_sell=True,
         supports_fast_buy=False,
+        supports_listings=False,
+        supports_sales_history=False,
+        supports_float=False,
+        supports_stickers=False,
+        supports_charms=False,
+        supports_best_deal_sort=False,
         fees=MarketplaceFees(
             deposit={
                 "crypto": FeeRule(percent=0),
@@ -78,9 +113,17 @@ MARKETPLACES = {
         ),
     ),
     "whitemarket": MarketplaceConfig(
+        display_name="White.Market",
+        currency="USD",
         can_buy=True,
         can_sell=True,
-        supports_fast_buy=False,
+        supports_fast_buy=True,
+        supports_listings=True,
+        supports_sales_history=False,
+        supports_float=True,
+        supports_stickers=True,
+        supports_charms=True,
+        supports_best_deal_sort=False,
         fees=MarketplaceFees(
             deposit={
                 "crypto": FeeRule(percent=0),

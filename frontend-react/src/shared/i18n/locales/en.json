@@ -1,0 +1,51 @@
+{
+  "app": { "name": "trueROI", "homeLabel": "trueROI home", "navigationLabel": "Main navigation", "online": "API online", "offline": "API unavailable", "skins": "{{count}} items" },
+  "navigation": { "catalog": "Market", "calculator": "Profit calculator" },
+  "language": { "switchLabel": "Switch language to {{language}}" },
+  "common": { "loading": "Loading…", "retry": "Try again", "reset": "Reset", "apply": "Apply", "close": "Close", "back": "Back", "noData": "No data", "open": "Open marketplace", "cached": "Cached data", "live": "Current data", "all": "All", "custom": "Custom" },
+  "catalog": {
+    "eyebrow": "CS2 MARKET INTELLIGENCE", "title": "Find the spread. Calculate the real return.",
+    "subtitle": "Compare live listings, fees, fast-buy orders, and real sales across CS2 marketplaces.",
+    "search": "Search items", "searchPlaceholder": "Skin, case, sticker, charm, agent…", "searchHint": "Enter at least 2 characters or select a catalogue filter.",
+    "itemType": "Item type", "weapon": "Weapon", "rarity": "Rarity", "collection": "Collection", "any": "Any", "results": "{{count}} matches", "variants": "{{count}} market variants",
+    "selected": "Selected skin", "conditions": "Wear conditions", "conditionsHint": "Choose a wear condition to inspect active listings.",
+    "noConditions": "No variants match the selected filters.", "marketFrom": "From {{price}}", "noPrice": "No quote", "marketError": "Market comparison is temporarily unavailable.", "marketFeeds": "market feeds", "standard": "Standard item", "marketDataUnavailable": "This catalogue item has no marketable variant, so marketplace analytics are unavailable."
+  },
+  "catalogTypes": { "skin": "Skin", "case": "Case", "container": "Container", "capsule": "Capsule", "sticker": "Sticker", "sticker_slab": "Sticker slab", "charm": "Charm", "souvenir_charm": "Souvenir charm", "agent": "Agent", "souvenir_package": "Souvenir package", "collectible": "Collectible", "pin": "Pin", "music_kit": "Music kit", "music_kit_box": "Music kit box", "patch": "Patch", "graffiti": "Graffiti", "graffiti_box": "Graffiti box", "key": "Key", "tool": "Tool" },
+  "profit": {
+    "settings": "ROI SETTINGS", "mode": "Mode", "buyOn": "Buy on", "sellOn": "Sell on", "auto": "Auto", "swap": "Swap marketplaces",
+    "deposit": "Deposit", "withdraw": "Withdraw", "card": "Card", "crypto": "Crypto", "includeDeposit": "Include deposit fee",
+    "raw": "Raw · no fees", "smart": "Smart · all fees", "enhanced": "Enhanced · no deposit fee", "quick_flip": "Quick flip · best bid", "custom": "Custom fees"
+  },
+  "listings": {
+    "title": "Active listings", "subtitle": "{{wear}} · {{market}}", "marketplace": "Marketplace", "sort": "Sort", "bestDeal": "Best deal", "lowest": "Lowest price",
+    "variant": "Variant", "normal": "Normal", "stattrak": "StatTrak™", "souvenir": "Souvenir", "float": "Float range", "price": "Price range, USD",
+    "stickers": "Has stickers", "charms": "Has charm", "show": "Show listings", "count": "{{count}} listings", "none": "No listings match these filters.",
+    "allMarketplaces": "All available marketplaces", "subtitleAll": "{{wear}} · all available marketplaces", "marketHeading": "Listings on {{market}}", "noMarketplaces": "No marketplace currently supports active listings for this item.", "noneOnMarket": "{{market}} returned no matching active listings.",
+    "filterUnsupportedTitle": "Filter unavailable", "filterUnsupportedMarket": "{{market}} cannot apply: {{filters}}. Other marketplace results remain visible.", "providerError": "{{market}} is temporarily unavailable", "providerErrorHint": "The other marketplace results are unaffected. You can retry this source separately.", "paintIndexUnavailableTitle": "This item cannot be searched by paint index", "paintIndexUnavailable": "{{market}} requires a paint index for this listing search. Try another marketplace shown here.",
+    "filtersUnsupported": "This marketplace does not support this filter.", "noStickers": "No stickers", "details": "Open analytics", "estimate": "Estimate {{price}}"
+  },
+  "analytics": {
+    "title": "Skin analytics", "history": "Sales history", "active": "Active listings", "quick": "Quick sale", "compare": "Compare",
+    "available": "Available history", "points": "{{count}} real sales", "historyUnavailable": "This marketplace does not provide public sales history.",
+    "historyEmpty": "No real sales were returned for this period.", "period24h": "24H", "period7d": "7D", "period14d": "14D", "periodAll": "Available",
+    "minPrice": "Minimum ask", "bestBid": "Best bid", "liquidity": "Liquidity", "salesDay": "Sales / day", "bidDepth": "Bid depth", "updated": "Updated {{date}}",
+    "date": "Date", "price": "Price", "quantity": "Quantity", "conditions": "Conditions", "market": "Market", "notSupported": "Not supported by this marketplace",
+    "buy": "Buy", "sell": "Sell", "netProfit": "Net profit", "roi": "Cash ROI", "selectedListing": "SELECTED LISTING", "backToListings": "Back to listings", "attachments": "Stickers / charms", "buyPreview": "Purchase item preview", "sellPreview": "Sale item preview",
+    "sourceNote": "Every point is a real sale returned by the marketplace. No synthetic values are generated.", "stale": "stale cache", "quoteUnavailable": "Quote metadata is unavailable.", "quickUnavailable": "The selected marketplace does not support quick sale requests."
+  },
+  "calculator": {
+    "eyebrow": "MANUAL DEAL MODEL", "title": "Profit calculator", "subtitle": "Use your actual buy and sell prices. Fee rates stay server-controlled.",
+    "optionalSkin": "Optional item reference", "skinPlaceholder": "Search an item to add market context…", "clearSkin": "Remove reference", "marketReference": "Market reference",
+    "buyPrice": "Actual buy price", "sellPrice": "Expected sell price", "manual": "Manual value", "useQuote": "Use {{price}}", "buyMarket": "Purchase marketplace", "sellMarket": "Sale marketplace",
+    "sellType": "Sale type", "listing": "Marketplace listing", "fastBuy": "Sell to best bid", "fees": "Fees included", "feeLocked": "Rates are maintained by the server and cannot be edited.",
+    "depositFee": "Deposit fee", "sellFee": "Selling fee", "withdrawFee": "Withdrawal fee", "calculate": "Calculate profit", "invalidMoney": "Enter a valid non-negative USD amount with up to two decimal places.",
+    "result": "Deal result", "effectiveBuy": "Effective cost", "effectivePayout": "Net payout", "grossProfit": "Gross spread", "marketProfit": "After selling fee", "netProfit": "Net profit",
+    "grossRoi": "Gross ROI", "marketRoi": "Market ROI", "cashRoi": "Cash ROI", "breakEven": "Break-even sale price", "positive": "Profitable", "negative": "Loss", "neutral": "Break-even",
+    "savings": "You buy {{amount}} below the current market reference ({{percent}}%).", "noReference": "Choose a skin to compare your manual price with current quotes.", "serverError": "Could not calculate this deal. Check marketplace capabilities and payment methods.",
+    "variant": "Skin variant", "comparisonTitle": "Actual deal vs market reference", "actualBuyResult": "Your purchase result", "referenceBuyResult": "Market-price result", "extraProfit": "Extra profit from your deal", "roiDelta": "ROI difference", "referenceError": "The market-reference result could not be calculated."
+  },
+  "attachments": { "sticker": "Sticker", "charm": "Charm", "referencePrice": "Reference price", "priceUnavailable": "Price unavailable" },
+  "actions": { "returnHome": "Return home" },
+  "errors": { "route": { "title": "This page is unavailable", "description": "The requested page could not be loaded." } }
+}

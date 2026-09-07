@@ -1,12 +1,14 @@
 import json
 import os
+import threading
 import time
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
-from .models import MarketPrice
+from .base import MarketplaceRequestError
+from ..models import MarketPrice
 
 CSFLOAT_LISTINGS_URL = "https://csfloat.com/api/v1/listings"
 CSFLOAT_PRICE_LIST_URL = f"{CSFLOAT_LISTINGS_URL}/price-list"
@@ -14,8 +16,11 @@ CSFLOAT_HISTORY_URL = "https://csfloat.com/api/v1/history"
 CSFLOAT_ITEM_URL = "https://csfloat.com/item"
 CSFLOAT_SORTS = {"best_deal", "lowest_price"}
 
+_rate_limit_lock = threading.Lock()
+_route_cooldowns: dict[str, float] = {}
 
-class CsfloatRequestError(Exception):
+
+class CsfloatRequestError(MarketplaceRequestError):
     """Безопасное для отображения пользователю описание сбоя CSFloat."""
 
 
@@ -465,19 +470,68 @@ def _number_or_none(value: object) -> float | None:
 
 
 def _load_json_with_rate_limit_retry(request: Request, *, timeout: int):
-    """Retry one throttled request, respecting a short Retry-After response."""
-    for attempt in range(2):
+    """Respect CSFloat's per-route headers and retry transient throttling."""
+    route = _rate_limit_route(request.full_url)
+    for attempt in range(3):
+        _wait_for_route(route)
         try:
             with urlopen(request, timeout=timeout) as response:
+                _remember_rate_limit(route, getattr(response, "headers", None))
                 return json.load(response)
         except HTTPError as error:
-            if error.code != 429 or attempt == 1:
+            if error.code != 429 or attempt == 2:
                 raise
-            retry_after = error.headers.get("Retry-After") if error.headers else None
-            try:
-                delay = float(retry_after) if retry_after is not None else 1.0
-            except ValueError:
-                delay = 1.0
-            time.sleep(min(max(delay, 0.25), 3.0))
+            delay = _rate_limit_delay(error.headers, attempt)
+            with _rate_limit_lock:
+                _route_cooldowns[route] = max(
+                    _route_cooldowns.get(route, 0.0), time.monotonic() + delay
+                )
 
     raise RuntimeError("unreachable")
+
+
+def _rate_limit_route(url: str) -> str:
+    """Collapse item identifiers so limits are tracked by endpoint family."""
+    path = urlsplit(url).path
+    if path.startswith("/api/v1/history/"):
+        return "/api/v1/history/:item/sales"
+    if path.startswith("/api/v1/listings/") and path.endswith("/buy-orders"):
+        return "/api/v1/listings/:id/buy-orders"
+    if path.startswith("/api/v1/listings/"):
+        return "/api/v1/listings/:id"
+    return path
+
+
+def _wait_for_route(route: str) -> None:
+    with _rate_limit_lock:
+        delay = _route_cooldowns.get(route, 0.0) - time.monotonic()
+    if delay > 0:
+        time.sleep(delay)
+
+
+def _remember_rate_limit(route: str, headers: object) -> None:
+    if headers is None or not hasattr(headers, "get"):
+        return
+    remaining = headers.get("X-RateLimit-Remaining")
+    if str(remaining) not in {"0", "1"}:
+        return
+    delay = _rate_limit_delay(headers, 0)
+    with _rate_limit_lock:
+        _route_cooldowns[route] = max(
+            _route_cooldowns.get(route, 0.0), time.monotonic() + delay
+        )
+
+
+def _rate_limit_delay(headers: object, attempt: int) -> float:
+    getter = headers.get if headers is not None and hasattr(headers, "get") else None
+    retry_after = getter("Retry-After") if getter else None
+    reset = getter("X-RateLimit-Reset") if getter else None
+    for raw_value, is_reset in ((retry_after, False), (reset, True)):
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if is_reset and value > 1_000_000_000:
+            value -= time.time()
+        return min(max(value, 0.25), 15.0)
+    return min(2.0**attempt, 15.0)

@@ -21,6 +21,29 @@ DEFAULT_GROUPED_SOURCE_URL = (
     "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/"
     "public/api/en/skins.json"
 )
+DEFAULT_EXTRA_SOURCE_BASE_URL = (
+    "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en"
+)
+EXTRA_CATALOG_FILES = {
+    "container": "crates.json",
+    "sticker": "stickers.json",
+    "charm": "keychains.json",
+    "agent": "agents.json",
+    "collectible": "collectibles.json",
+    "music_kit": "music_kits.json",
+    "patch": "patches.json",
+    "graffiti": "graffiti.json",
+    "key": "keys.json",
+    "sticker_slab": "sticker_slabs.json",
+    "tool": "tools.json",
+    "souvenir_charm": "highlights.json",
+}
+
+# Every supported non-skin type is queried by its exact Steam market hash name
+# by all marketplace adapters. Source rows without that identifier represent
+# inventory-only rewards, service medals, trophies, preview content, or other
+# entries that cannot be priced reliably and must not enter the ROI catalogue.
+SUPPORTED_EXTRA_SOURCE_TYPES = frozenset(EXTRA_CATALOG_FILES)
 
 
 def download_catalog(url: str) -> list[dict[str, Any]]:
@@ -103,6 +126,112 @@ def prepare_catalog(
     return list(skins.values()), variants
 
 
+def prepare_non_skin_catalog(
+    catalogues: dict[str, list[dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Normalize every marketable CS2 item into the existing item/variant model.
+
+    A non-skin has zero or one market variant. Keeping it in the same normalized
+    tables lets price adapters use its exact ``market_hash_name`` without adding
+    type-specific marketplace code.
+    """
+    items: list[dict[str, Any]] = []
+    variants: list[dict[str, Any]] = []
+    for source_type, source_items in catalogues.items():
+        for raw_item in source_items:
+            if not _is_marketplace_catalog_item(source_type, raw_item):
+                continue
+            item_id = raw_item.get("id")
+            name = raw_item.get("name") or raw_item.get("market_hash_name")
+            if not isinstance(item_id, str) or not isinstance(name, str):
+                continue
+            item_type = _specific_item_type(source_type, raw_item)
+            rarity = raw_item.get("rarity") or {}
+            if not isinstance(rarity, dict):
+                rarity = {}
+            market_hash_name = raw_item["market_hash_name"].strip()
+            has_stattrak = bool(raw_item.get("stattrak")) or name.startswith(
+                "StatTrak™"
+            )
+            has_souvenir = name.startswith("Souvenir ")
+            items.append(
+                {
+                    "id": item_id,
+                    "name": name,
+                    "item_type": item_type,
+                    "description": raw_item.get("description"),
+                    "image_url": raw_item.get("image"),
+                    "weapon_id": None,
+                    "weapon_name": None,
+                    "category_id": item_type,
+                    "category_name": raw_item.get("type") or item_type,
+                    "pattern_id": None,
+                    "pattern_name": None,
+                    "rarity_id": rarity.get("id"),
+                    "rarity_name": rarity.get("name"),
+                    "rarity_color": rarity.get("color"),
+                    "min_float": None,
+                    "max_float": None,
+                    "paint_index": None,
+                    "has_stattrak": has_stattrak,
+                    "has_souvenir": has_souvenir,
+                    "raw_data": raw_item,
+                }
+            )
+            variants.append(
+                {
+                    "id": f"catalog-variant-{item_id}",
+                    "skin_id": item_id,
+                    "name": market_hash_name,
+                    "market_hash_name": market_hash_name,
+                    "wear_id": None,
+                    "wear_name": None,
+                    "stattrak": has_stattrak,
+                    "souvenir": has_souvenir,
+                    "image_url": raw_item.get("image"),
+                    "raw_data": raw_item,
+                }
+            )
+    return items, variants
+
+
+def _is_marketplace_catalog_item(
+    source_type: str, item: dict[str, Any]
+) -> bool:
+    """Accept only source rows that can be addressed by marketplace APIs."""
+    if source_type not in SUPPORTED_EXTRA_SOURCE_TYPES:
+        return False
+    market_hash_name = item.get("market_hash_name")
+    if not isinstance(market_hash_name, str) or not market_hash_name.strip():
+        return False
+    # The collectibles feed also contains account-bound coins, medals,
+    # Pick'Em trophies and unreleased definitions. Only non-genuine pins have
+    # real market counterparts across the supported marketplaces.
+    if source_type == "collectible":
+        descriptor = str(item.get("type") or "").casefold()
+        return "pin" in descriptor and not bool(item.get("genuine"))
+    return True
+
+
+def _specific_item_type(source_type: str, item: dict[str, Any]) -> str:
+    """Split broad source files into useful catalogue filters."""
+    descriptor = f"{item.get('type') or ''} {item.get('name') or ''}".casefold()
+    if source_type == "container":
+        if "souvenir" in descriptor:
+            return "souvenir_package"
+        if "capsule" in descriptor:
+            return "capsule"
+        if "graffiti" in descriptor:
+            return "graffiti_box"
+        if "music" in descriptor:
+            return "music_kit_box"
+        if "case" in descriptor:
+            return "case"
+    if source_type == "collectible" and "pin" in descriptor:
+        return "pin"
+    return source_type
+
+
 def prepare_skin_collections(
     grouped_items: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -133,9 +262,22 @@ def prepare_skin_collections(
 def import_catalog(
     items: list[dict[str, Any]],
     grouped_items: list[dict[str, Any]] | None = None,
+    extra_catalogues: dict[str, list[dict[str, Any]]] | None = None,
 ) -> tuple[int, int]:
     skins, variants = prepare_catalog(items)
     collections = prepare_skin_collections(grouped_items or [])
+    if extra_catalogues:
+        extra_items, extra_variants = prepare_non_skin_catalog(extra_catalogues)
+        skins.extend(extra_items)
+        variants.extend(extra_variants)
+        for source_items in extra_catalogues.values():
+            collections.extend(prepare_skin_collections(source_items))
+    imported_ids = {skin["id"] for skin in skins}
+    collections = [
+        collection
+        for collection in collections
+        if collection["skin_id"] in imported_ids
+    ]
     if not skins or not variants:
         raise ValueError("The downloaded catalogue contains no usable skins")
 
@@ -145,12 +287,12 @@ def import_catalog(
             cursor.executemany(
                 """
                 INSERT INTO skins (
-                    id, name, description, image_url, weapon_id, weapon_name,
+                    id, name, item_type, description, image_url, weapon_id, weapon_name,
                     category_id, category_name, pattern_id, pattern_name,
                     rarity_id, rarity_name, rarity_color, min_float, max_float,
                     paint_index, has_stattrak, has_souvenir, raw_data
                 ) VALUES (
-                    %(id)s, %(name)s, %(description)s, %(image_url)s,
+                    %(id)s, %(name)s, %(item_type)s, %(description)s, %(image_url)s,
                     %(weapon_id)s, %(weapon_name)s, %(category_id)s, %(category_name)s,
                     %(pattern_id)s, %(pattern_name)s, %(rarity_id)s, %(rarity_name)s,
                     %(rarity_color)s, %(min_float)s, %(max_float)s, %(paint_index)s,
@@ -158,6 +300,7 @@ def import_catalog(
                 )
                 ON CONFLICT (id) DO UPDATE SET
                     name = EXCLUDED.name,
+                    item_type = EXCLUDED.item_type,
                     description = EXCLUDED.description,
                     image_url = EXCLUDED.image_url,
                     weapon_id = EXCLUDED.weapon_id,
@@ -177,7 +320,14 @@ def import_catalog(
                     raw_data = EXCLUDED.raw_data,
                     updated_at = NOW()
                 """,
-                [{**skin, "raw_data": Jsonb(skin["raw_data"])} for skin in skins],
+                [
+                    {
+                        **skin,
+                        "item_type": skin.get("item_type", "skin"),
+                        "raw_data": Jsonb(skin["raw_data"]),
+                    }
+                    for skin in skins
+                ],
             )
             cursor.executemany(
                 """
@@ -243,7 +393,17 @@ def main() -> None:
     items = download_catalog(source_url)
     print(f"Downloading grouped skin metadata from {grouped_source_url}", flush=True)
     grouped_items = download_catalog(grouped_source_url)
-    skin_count, variant_count = import_catalog(items, grouped_items)
+    extra_base_url = os.getenv(
+        "CATALOG_EXTRA_SOURCE_BASE_URL", DEFAULT_EXTRA_SOURCE_BASE_URL
+    ).rstrip("/")
+    extra_catalogues = {}
+    for item_type, filename in EXTRA_CATALOG_FILES.items():
+        source = f"{extra_base_url}/{filename}"
+        print(f"Downloading {item_type} catalogue from {source}", flush=True)
+        extra_catalogues[item_type] = download_catalog(source)
+    skin_count, variant_count = import_catalog(
+        items, grouped_items, extra_catalogues
+    )
     print(
         f"Catalogue is ready: {skin_count} skins, {variant_count} variants",
         flush=True,

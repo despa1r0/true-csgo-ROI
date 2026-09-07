@@ -42,7 +42,7 @@ services:
       CSGOMARKET_DETAILS_TTL_SECONDS: ${CSGOMARKET_DETAILS_TTL_SECONDS:-600}
       CSGOMARKET_HISTORY_INDEX_TTL_SECONDS: ${CSGOMARKET_HISTORY_INDEX_TTL_SECONDS:-3600}
     ports:
-      - "8000:8000"
+      - "8005:8000"
     depends_on:
       catalog-seed:
         condition: service_completed_successfully

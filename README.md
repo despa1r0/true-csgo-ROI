@@ -50,11 +50,11 @@ sticker slabs, инструменты и souvenir charms. Затем созда�
    Для фонового запуска используйте `docker compose up --build -d`.
    После успешного импорта в логах появится `Catalogue is ready`.
 
-4. Откройте [http://localhost:8000](http://localhost:8000). Проверить, что API
+4. Откройте [http://localhost:8005](http://localhost:8005). Проверить, что API
    отвечает, можно командой:
 
    ```bash
-   curl http://localhost:8000/api/health
+   curl http://localhost:8005/api/health
    ```
 
 ### Windows
@@ -80,11 +80,11 @@ sticker slabs, инструменты и souvenir charms. Затем созда�
    .\start.ps1 -Detached
    ```
 
-3. После `Catalogue is ready` откройте [http://localhost:8000](http://localhost:8000).
+3. После `Catalogue is ready` откройте [http://localhost:8005](http://localhost:8005).
    Проверка API из PowerShell:
 
    ```powershell
-   Invoke-WebRequest http://localhost:8000/api/health
+   Invoke-WebRequest http://localhost:8005/api/health
    ```
 
 ### Управление запуском
@@ -125,7 +125,7 @@ docker compose down -v
 - динамические capabilities площадок управляют доступностью лотов, истории, quick sell, float, наклеек, charm и сортировки `best_deal`;
 - серверное сравнение направлений сделки, заявки на покупку, цена быстрой продажи и beta-оценка ликвидности; liquidity остаётся диагностической метрикой и не корректирует profit/ROI;
 - PostgreSQL-кэш индексов цен и подробностей вариантов;
-- Swagger API: `http://localhost:8000/docs`.
+- Swagger API: `http://localhost:8005/docs`.
 
 Подробное описание frontend-архитектуры и ограничений: [`docs/FRONTEND.md`](docs/FRONTEND.md).
 
@@ -226,7 +226,7 @@ ROI = profit / effective_buy × 100
 ## API каталога
 
 Ниже перечислены все маршруты текущего backend-а. Интерактивные схемы запросов и
-ответов доступны в Swagger: [http://localhost:8000/docs](http://localhost:8000/docs).
+ответов доступны в Swagger: [http://localhost:8005/docs](http://localhost:8005/docs).
 
 ### Состояние и локальный каталог
 

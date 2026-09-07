@@ -15,21 +15,21 @@ services:
     restart: unless-stopped
 
   catalog-seed:
-      image: ghcr.io/despa1r0/true-csgo-ROI:${IMAGE_TAG}
-      command: ["python", "-m", "backend.app.seed_catalog"]
-      environment:
+    image: ghcr.io/despa1r0/true-csgo-roi:${IMAGE_TAG}
+    command: ["python", "-m", "backend.app.seed_catalog"]
+    environment:
       DATABASE_URL: ${DATABASE_URL}
       CATALOG_SOURCE_URL: ${CATALOG_SOURCE_URL}
       CATALOG_GROUPED_SOURCE_URL: ${CATALOG_GROUPED_SOURCE_URL}
       CATALOG_EXTRA_SOURCE_BASE_URL: ${CATALOG_EXTRA_SOURCE_BASE_URL}
-      depends_on:
+    depends_on:
       db:
         condition: service_healthy
-      restart: "no"
-        
+    restart: "no"
+
   api:
-      image: ghcr.io/despa1r0/true-csgo-ROI:${IMAGE_TAG}
-      environment:
+    image: ghcr.io/despa1r0/true-csgo-roi:${IMAGE_TAG}
+    environment:
       DATABASE_URL: ${DATABASE_URL}
       CSFLOAT_API_KEY: ${CSFLOAT_API_KEY:-}
       CSFLOAT_CACHE_TTL_SECONDS: ${CSFLOAT_CACHE_TTL_SECONDS:-300}
@@ -41,21 +41,17 @@ services:
       CSGOMARKET_CACHE_TTL_SECONDS: ${CSGOMARKET_CACHE_TTL_SECONDS:-300}
       CSGOMARKET_DETAILS_TTL_SECONDS: ${CSGOMARKET_DETAILS_TTL_SECONDS:-600}
       CSGOMARKET_HISTORY_INDEX_TTL_SECONDS: ${CSGOMARKET_HISTORY_INDEX_TTL_SECONDS:-3600}
-      ports:
-      - "8000:8000"
-      depends_on:
+    ports:
+      - "8005:8000"
+    depends_on:
       catalog-seed:
         condition: service_completed_successfully
-      healthcheck:
+    healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
       interval: 5s
       timeout: 4s
       retries: 12
-      restart: unless-stopped
+    restart: unless-stopped
 
 volumes:
   true_roi_postgres:
-
-
-
-    

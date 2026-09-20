@@ -12,6 +12,18 @@
     "noConditions": "No variants match the selected filters.", "marketFrom": "From {{price}}", "noPrice": "No quote", "marketError": "Market comparison is temporarily unavailable.", "marketFeeds": "market feeds", "standard": "Standard item", "marketDataUnavailable": "This catalogue item has no marketable variant, so marketplace analytics are unavailable."
   },
   "catalogTypes": { "skin": "Skin", "case": "Case", "container": "Container", "capsule": "Capsule", "sticker": "Sticker", "sticker_slab": "Sticker slab", "charm": "Charm", "souvenir_charm": "Souvenir charm", "agent": "Agent", "souvenir_package": "Souvenir package", "collectible": "Collectible", "pin": "Pin", "music_kit": "Music kit", "music_kit_box": "Music kit box", "patch": "Patch", "graffiti": "Graffiti", "graffiti_box": "Graffiti box", "key": "Key", "tool": "Tool" },
+  "flipRisk": {
+    "score": "Liquidity {{score}}/100",
+    "criticalTitle": "Very high exit risk.",
+    "criticalBody": "Selling at the shown price may take a long time or require a substantial discount.",
+    "highTitle": "Low liquidity.",
+    "highBody": "Check demand and the quick-sale price before buying.",
+    "cautionTitle": "Moderate liquidity.",
+    "cautionBody": "Selling at the listed price may take time.",
+    "unknownTitle": "Sale risk is unknown.",
+    "unknownBody": "There is not enough fresh sales or bid data for this marketplace.",
+    "askAssumption": "The {{roi}}% ROI assumes a sale at the shown price."
+  },
   "profit": {
     "settings": "ROI SETTINGS", "mode": "Mode", "buyOn": "Buy on", "sellOn": "Sell on", "auto": "Auto", "swap": "Swap marketplaces",
     "deposit": "Deposit", "withdraw": "Withdraw", "card": "Card", "crypto": "Crypto", "includeDeposit": "Include deposit fee",
@@ -23,12 +35,14 @@
     "stickers": "Has stickers", "charms": "Has charm", "show": "Show listings", "count": "{{count}} listings", "none": "No listings match these filters.",
     "allMarketplaces": "All available marketplaces", "subtitleAll": "{{wear}} · all available marketplaces", "marketHeading": "Listings on {{market}}", "noMarketplaces": "No marketplace currently supports active listings for this item.", "noneOnMarket": "{{market}} returned no matching active listings.",
     "filterUnsupportedTitle": "Filter unavailable", "filterUnsupportedMarket": "{{market}} cannot apply: {{filters}}. Other marketplace results remain visible.", "providerError": "{{market}} is temporarily unavailable", "providerErrorHint": "The other marketplace results are unaffected. You can retry this source separately.", "paintIndexUnavailableTitle": "This item cannot be searched by paint index", "paintIndexUnavailable": "{{market}} requires a paint index for this listing search. Try another marketplace shown here.",
-    "filtersUnsupported": "This marketplace does not support this filter.", "noStickers": "No stickers", "details": "Open analytics", "estimate": "Estimate {{price}}"
+    "filtersUnsupported": "This marketplace does not support this filter.", "noStickers": "No stickers", "details": "Open analytics", "estimate": "Estimate {{price}}",
+    "snapshotUpdated": "Checked {{date}}", "snapshotStale": "Cached prices may be outdated", "snapshotPartial": "Partial sample: lowest price may be missing", "snapshotQueued": "Refreshing in the background"
   },
   "analytics": {
     "title": "Skin analytics", "history": "Sales history", "active": "Active listings", "quick": "Quick sale", "compare": "Compare",
     "available": "Available history", "points": "{{count}} real sales", "historyUnavailable": "This marketplace does not provide public sales history.",
-    "historyEmpty": "No real sales were returned for this period.", "period24h": "24H", "period7d": "7D", "period14d": "14D", "periodAll": "Available",
+      "historyEmpty": "No real sales were returned for this period.", "period24h": "24H", "period7d": "7D", "period14d": "14D", "periodAll": "Available",
+      "wikiTradePriceHistory": "CS.MONEY Trade price history", "pricePoints": "{{count}} daily prices", "wikiTradePriceNote": "Daily Trade quotes from CS.MONEY Wiki in USD. These are not completed sales or Market listing prices and do not affect liquidity or ROI.", "wikiTradePriceUnavailable": "Recent Wiki Trade prices are unavailable.", "wikiTradePriceLatest": "Latest quote: {{price}} on {{date}}",
     "minPrice": "Minimum ask", "bestBid": "Best bid", "liquidity": "Liquidity", "salesDay": "Sales / day", "bidDepth": "Bid depth", "updated": "Updated {{date}}",
     "date": "Date", "price": "Price", "quantity": "Quantity", "conditions": "Conditions", "market": "Market", "notSupported": "Not supported by this marketplace",
     "buy": "Buy", "sell": "Sell", "netProfit": "Net profit", "roi": "Cash ROI", "selectedListing": "SELECTED LISTING", "backToListings": "Back to listings", "attachments": "Stickers / charms", "buyPreview": "Purchase item preview", "sellPreview": "Sale item preview",

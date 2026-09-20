@@ -231,7 +231,11 @@ def get_csgomarket_variant_details(variant_id: str) -> dict[str, Any] | None:
     lowest_ask_cents = context.get("price_cents") or (
         listings[0]["price_cents"] if listings else None
     )
-    liquidity = calculate_liquidity(sales, lowest_ask_cents, buy_orders)
+    liquidity = calculate_liquidity(
+        sales, lowest_ask_cents, buy_orders,
+        sales_available=not bool(sales_error),
+        orders_available=not bool(buy_orders_error),
+    )
     detail = {
         "sales_count": len(sales) if not sales_error or sales else None,
         "liquidity_score": liquidity["score"],
@@ -529,7 +533,9 @@ def _detail_response(
         listings[0]["price_cents"] if listings else None
     )
     liquidity = calculate_liquidity(
-        detail.get("sales") or [], lowest_ask_cents, buy_orders
+        detail.get("sales") or [], lowest_ask_cents, buy_orders,
+        sales_available=not bool(detail.get("sales_error")),
+        orders_available=not bool(detail.get("buy_orders_error")),
     )
     best_buy_price = max(
         (order["price_cents"] for order in buy_orders), default=None
@@ -557,8 +563,10 @@ def _detail_response(
                 "Публичная история CSGO Market не передаёт float проданного предмета"
             ),
             "sales_per_day": liquidity["sales_per_day"],
+            "sales_count_7d": liquidity["sales_count_7d"],
             "liquidity_score": liquidity["score"],
             "liquidity_label": liquidity["label"],
+            "liquidity_data_status": liquidity["data_status"],
             "price_retention_percent": liquidity["price_retention_percent"],
             "near_bid_depth": liquidity["near_bid_depth"],
             "methodology": LIQUIDITY_METHOD,

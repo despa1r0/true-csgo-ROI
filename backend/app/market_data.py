@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from urllib.parse import urlencode
@@ -48,10 +48,10 @@ WEAR_NAME_BY_SLUG = {
     "battle-scarred": "Battle-Scarred",
 }
 LIQUIDITY_METHOD = (
-    "Beta-оценка: 65% — сохранение цены при быстрой продаже (лучшая заявка / "
-    "минимальный листинг), 25% — глубина заявок в пределах 5% от лучшей, "
-    "10% — частота продаж в доступной истории. Это рыночный score, а не "
-    "вероятность продажи."
+    "Beta-оценка 0–100: 40% — качество выхода по bid (60% сохранение цены, "
+    "40% глубина заявок в пределах 5% от лучшей), 60% — число наблюдаемых "
+    "продаж за последние 7 дней. При отсутствии истории, ask или bid оценка "
+    "недоступна. Это не вероятность продажи; история может быть неполной."
 )
 
 
@@ -783,7 +783,11 @@ def get_csfloat_variant_details(variant_id: str) -> dict[str, Any] | None:
     lowest_ask_cents = context.get("price_cents") or (
         listings[0]["price_cents"] if listings else None
     )
-    liquidity = calculate_liquidity(sales, lowest_ask_cents, buy_orders)
+    liquidity = calculate_liquidity(
+        sales, lowest_ask_cents, buy_orders,
+        sales_available=not bool(sales_error),
+        orders_available=not bool(buy_orders_error),
+    )
 
     detail = {
         "sales_count": len(sales) if not sales_error or sales else None,
@@ -851,17 +855,34 @@ def calculate_liquidity(
     sales: list[dict[str, object]],
     lowest_ask_cents: int | None,
     buy_orders: list[dict[str, object]],
+    *,
+    sales_available: bool = True,
+    orders_available: bool = True,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Estimate execution quality from spread, near-bid depth and sales rate."""
+    """Estimate liquidity from a fixed seven-day sample and executable bids.
+
+    Missing source data is unknown rather than a zero-value observation.
+    The score is a heuristic index, never a probability of sale.
+    """
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    now = now.astimezone(timezone.utc)
+    sales_count_7d = _recent_sales_count(sales, now) if sales_available and sales else None
+    sales_per_day = round(sales_count_7d / 7, 2) if sales_count_7d is not None else None
     best_bid = max(
         (
             order["price_cents"]
             for order in buy_orders
-            if order.get("price_cents") is not None
+            if isinstance(order.get("price_cents"), int)
+            and not isinstance(order["price_cents"], bool)
+            and order["price_cents"] > 0
         ),
         default=None,
     )
-    sales_per_day = _sales_per_day(sales)
+    if not orders_available:
+        best_bid = None
     if not lowest_ask_cents or best_bid is None:
         return {
             "score": None,
@@ -870,6 +891,8 @@ def calculate_liquidity(
             "quick_sell_discount_percent": None,
             "near_bid_depth": 0,
             "sales_per_day": sales_per_day,
+            "sales_count_7d": sales_count_7d,
+            "data_status": "missing_ask" if not lowest_ask_cents else "missing_orders",
         }
 
     retention = min(
@@ -880,55 +903,51 @@ def calculate_liquidity(
     near_bid_depth = sum(
         int(order["quantity"])
         for order in buy_orders
-        if Decimal(int(order["price_cents"])) >= near_bid_floor
+        if isinstance(order.get("price_cents"), int)
+        and isinstance(order.get("quantity"), int)
+        and not isinstance(order["quantity"], bool)
+        and order["quantity"] > 0
+        and Decimal(order["price_cents"]) >= near_bid_floor
     )
-    depth_score = min(Decimal("100"), Decimal(near_bid_depth) * Decimal("5"))
-    velocity_score = (
-        min(Decimal("100"), Decimal(str(sales_per_day)) * Decimal("50"))
-        if sales_per_day is not None
-        else Decimal("0")
-    )
-    score = int(
-        (
-            retention * Decimal("0.65")
-            + depth_score * Decimal("0.25")
-            + velocity_score * Decimal("0.10")
-        ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    )
-    if score >= 75:
-        label = "high"
-    elif score >= 50:
-        label = "medium"
-    else:
-        label = "low"
+    score = None
+    label = "unavailable"
+    if sales_count_7d is not None:
+        depth_score = min(Decimal("100"), Decimal(near_bid_depth) * Decimal("10"))
+        activity_score = min(
+            Decimal("100"),
+            (Decimal(sales_count_7d) / Decimal("14")).sqrt() * Decimal("100"),
+        )
+        execution_score = retention * Decimal("0.6") + depth_score * Decimal("0.4")
+        score = int((execution_score * Decimal("0.4") + activity_score * Decimal("0.6"))
+                    .quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        label = "high" if score >= 75 else "medium" if score >= 50 else "low"
     retention_display = retention.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
     return {
-        "score": min(100, score),
+        "score": min(100, score) if score is not None else None,
         "label": label,
         "price_retention_percent": float(retention_display),
         "quick_sell_discount_percent": float(Decimal("100") - retention_display),
         "near_bid_depth": near_bid_depth,
         "sales_per_day": sales_per_day,
+        "sales_count_7d": sales_count_7d,
+        "data_status": "complete" if score is not None else "missing_sales",
     }
 
 
-def _sales_per_day(sales: list[dict[str, object]]) -> float | None:
-    timestamps = []
+def _recent_sales_count(sales: list[dict[str, object]], now: datetime) -> int:
+    count = 0
+    since = now - timedelta(days=7)
     for sale in sales:
         value = sale.get("sold_at")
         if not isinstance(value, str):
             continue
         try:
-            timestamps.append(datetime.fromisoformat(value.replace("Z", "+00:00")))
+            sold_at = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             continue
-    if len(timestamps) < 2:
-        return None
-    span_seconds = (max(timestamps) - min(timestamps)).total_seconds()
-    span_days = Decimal(str(span_seconds)) / Decimal("86400")
-    span_days = max(span_days, Decimal("0.0416667"))
-    rate = Decimal(len(timestamps) - 1) / span_days
-    return float(rate.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        if sold_at.tzinfo is not None and since <= sold_at.astimezone(timezone.utc) <= now:
+            count += 1
+    return count
 def _load_variant_detail_cache(
     variant_id: str, ttl_seconds: int
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -1017,7 +1036,9 @@ def _detail_response(
         listings[0]["price_cents"] if listings else None
     )
     liquidity = calculate_liquidity(
-        detail.get("sales") or [], lowest_ask_cents, buy_orders
+        detail.get("sales") or [], lowest_ask_cents, buy_orders,
+        sales_available=not bool(detail.get("sales_error")),
+        orders_available=not bool(detail.get("buy_orders_error")),
     )
     best_buy_price = max(
         (order["price_cents"] for order in buy_orders), default=None
@@ -1047,8 +1068,10 @@ def _detail_response(
                 "CSFloat передаёт float для тех продаж, где он доступен в ответе API"
             ),
             "sales_per_day": liquidity["sales_per_day"],
+            "sales_count_7d": liquidity["sales_count_7d"],
             "liquidity_score": liquidity["score"],
             "liquidity_label": liquidity["label"],
+            "liquidity_data_status": liquidity["data_status"],
             "price_retention_percent": liquidity["price_retention_percent"],
             "near_bid_depth": liquidity["near_bid_depth"],
             "methodology": LIQUIDITY_METHOD,

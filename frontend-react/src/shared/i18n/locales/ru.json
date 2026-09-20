@@ -12,6 +12,18 @@
     "noConditions": "Нет вариантов, соответствующих фильтрам.", "marketFrom": "От {{price}}", "noPrice": "Нет цены", "marketError": "Сравнение площадок временно недоступно.", "marketFeeds": "рыночных источника", "standard": "Стандартный предмет", "marketDataUnavailable": "У этого предмета нет продаваемого варианта, поэтому аналитика площадок недоступна."
   },
   "catalogTypes": { "skin": "Скин", "case": "Кейс", "container": "Контейнер", "capsule": "Капсула", "sticker": "Наклейка", "sticker_slab": "Футляр наклейки", "charm": "Charm", "souvenir_charm": "Сувенирный charm", "agent": "Агент", "souvenir_package": "Сувенирный набор", "collectible": "Коллекционный предмет", "pin": "Значок", "music_kit": "Музыкальный набор", "music_kit_box": "Контейнер музыки", "patch": "Нашивка", "graffiti": "Граффити", "graffiti_box": "Контейнер граффити", "key": "Ключ", "tool": "Инструмент" },
+  "flipRisk": {
+    "score": "Ликвидность {{score}}/100",
+    "criticalTitle": "Очень высокий риск выхода.",
+    "criticalBody": "Продажа по указанной цене может занять долгое время или потребовать заметной скидки.",
+    "highTitle": "Низкая ликвидность.",
+    "highBody": "Проверьте спрос и цену быстрой продажи перед покупкой.",
+    "cautionTitle": "Умеренная ликвидность.",
+    "cautionBody": "Продажа по цене листинга может потребовать времени.",
+    "unknownTitle": "Риск продажи неизвестен.",
+    "unknownBody": "Для этой площадки недостаточно свежих данных о продажах или заявках.",
+    "askAssumption": "ROI {{roi}}% предполагает продажу по указанной цене."
+  },
   "profit": {
     "settings": "НАСТРОЙКИ ROI", "mode": "Режим", "buyOn": "Купить на", "sellOn": "Продать на", "auto": "Авто", "swap": "Поменять площадки местами",
     "deposit": "Пополнение", "withdraw": "Вывод", "card": "Карта", "crypto": "Крипто", "includeDeposit": "Учитывать пополнение",
@@ -23,12 +35,14 @@
     "stickers": "Есть наклейки", "charms": "Есть charm", "show": "Показать лоты", "count": "Лотов: {{count}}", "none": "Нет лотов, соответствующих фильтрам.",
     "allMarketplaces": "Все доступные площадки", "subtitleAll": "{{wear}} · все доступные площадки", "marketHeading": "Лоты на {{market}}", "noMarketplaces": "Сейчас ни одна площадка не поддерживает активные лоты для этого предмета.", "noneOnMarket": "На {{market}} нет активных лотов с такими фильтрами.",
     "filterUnsupportedTitle": "Фильтр недоступен", "filterUnsupportedMarket": "{{market}} не умеет применять: {{filters}}. Результаты других площадок остаются видимыми.", "providerError": "{{market}} временно недоступен", "providerErrorHint": "Остальные площадки продолжат работать. Этот источник можно повторить отдельно.", "paintIndexUnavailableTitle": "Для предмета недоступен поиск по paint index", "paintIndexUnavailable": "Для поиска лотов на {{market}} требуется paint index. Попробуйте другую площадку из списка.",
-    "filtersUnsupported": "Эта площадка не поддерживает данный фильтр.", "noStickers": "Без наклеек", "details": "Открыть аналитику", "estimate": "Оценка {{price}}"
+    "filtersUnsupported": "Эта площадка не поддерживает данный фильтр.", "noStickers": "Без наклеек", "details": "Открыть аналитику", "estimate": "Оценка {{price}}",
+    "snapshotUpdated": "Проверено {{date}}", "snapshotStale": "Цены в кеше могут устареть", "snapshotPartial": "Неполная выборка: минимальная цена может быть ниже", "snapshotQueued": "Обновляется в фоне"
   },
   "analytics": {
     "title": "Аналитика скина", "history": "История продаж", "active": "Активные лоты", "quick": "Быстрая продажа", "compare": "Сравнение",
     "available": "Доступная история", "points": "Реальных продаж: {{count}}", "historyUnavailable": "Площадка не предоставляет публичную историю продаж.",
-    "historyEmpty": "За выбранный период реальные продажи не получены.", "period24h": "24Ч", "period7d": "7Д", "period14d": "14Д", "periodAll": "Доступная",
+      "historyEmpty": "За выбранный период реальные продажи не получены.", "period24h": "24Ч", "period7d": "7Д", "period14d": "14Д", "periodAll": "Доступная",
+      "wikiTradePriceHistory": "История цен CS.MONEY Trade", "pricePoints": "Ценовых точек: {{count}}", "wikiTradePriceNote": "Дневные цены Trade из CS.MONEY Wiki в USD. Это не подтверждённые продажи и не цены лотов Market; они не влияют на ликвидность и ROI.", "wikiTradePriceUnavailable": "Свежая история цен Trade в Wiki недоступна.", "wikiTradePriceLatest": "Последняя цена: {{price}} на {{date}}",
     "minPrice": "Минимальный ask", "bestBid": "Лучший bid", "liquidity": "Ликвидность", "salesDay": "Продаж в день", "bidDepth": "Глубина bid", "updated": "Обновлено {{date}}",
     "date": "Дата", "price": "Цена", "quantity": "Количество", "conditions": "Условия", "market": "Площадка", "notSupported": "Не поддерживается этой площадкой",
     "buy": "Покупка", "sell": "Продажа", "netProfit": "Чистая прибыль", "roi": "Cash ROI", "selectedListing": "ВЫБРАННЫЙ ЛОТ", "backToListings": "Назад к лотам", "attachments": "Наклейки / charms", "buyPreview": "Предмет покупки", "sellPreview": "Предмет продажи",

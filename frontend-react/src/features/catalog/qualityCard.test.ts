@@ -72,4 +72,15 @@ describe("selectQualityCardMarketData", () => {
 
     expect(result.best).toBeUndefined();
   });
+
+  it("does not present a stale marketplace snapshot as the cheapest current price", () => {
+    const stale = variant("stale-ft", 1000, 500);
+    stale.markets.csfloat = { ...quote(1000), stale: true };
+    const fresh = variant("fresh-ft", 1500, 100);
+
+    const result = selectQualityCardMarketData([stale, fresh], "all", "auto");
+
+    expect(result.cheapest?.variant.variant_id).toBe("fresh-ft");
+    expect(result.best?.profit_cents).toBe(100);
+  });
 });

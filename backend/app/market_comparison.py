@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+import os
 from typing import Any
 
 from .csgomarket_data import (
     get_csgomarket_prices,
     get_csgomarket_variant_fast_buy,
 )
+from .csmoney_data import get_csmoney_prices
+from .database import get_connection
 from .market_data import (
+    calculate_liquidity,
     get_csfloat_prices,
     get_csfloat_variant_fast_buy,
     get_whitemarket_prices,
@@ -23,6 +28,7 @@ MARKET_RESPONSE_KEYS = {
     "CSFloat": "csfloat",
     "CSGO Market": "csgomarket",
     "WhiteMarket": "whitemarket",
+    "CS.MONEY": "csmoney",
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
 
@@ -49,19 +55,22 @@ def get_skin_market_comparison(
     profit_mode: str = "smart",
 ) -> dict[str, Any]:
     """Load all cached indexes concurrently and compare every exact variant."""
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         csfloat_future = executor.submit(get_csfloat_prices, skin_id)
         csgomarket_future = executor.submit(get_csgomarket_prices, skin_id)
         whitemarket_future = executor.submit(get_whitemarket_prices, skin_id)
+        csmoney_future = executor.submit(get_csmoney_prices, skin_id)
         csfloat = csfloat_future.result()
         csgomarket = csgomarket_future.result()
         whitemarket = whitemarket_future.result()
-    market_responses = [csfloat, csgomarket, whitemarket]
+        csmoney = csmoney_future.result()
+    market_responses = [csfloat, csgomarket, whitemarket, csmoney]
     quick_sell_prices = (
         _load_quick_sell_prices(market_responses)
         if profit_mode == "quick_flip"
         else None
     )
+    liquidity_signals = _cached_liquidity_signals(skin_id, market_responses)
     return compare_market_responses(
         skin_id,
         market_responses,
@@ -70,6 +79,7 @@ def get_skin_market_comparison(
         use_deposit_fee=use_deposit_fee,
         profit_mode=profit_mode,
         quick_sell_prices=quick_sell_prices,
+        liquidity_signals=liquidity_signals,
     )
 
 
@@ -82,6 +92,7 @@ def compare_market_responses(
     use_deposit_fee: bool,
     profit_mode: str = "smart",
     quick_sell_prices: dict[str, dict[str, dict[str, Any]]] | None = None,
+    liquidity_signals: dict[str, dict[str, dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     if profit_mode not in PROFIT_MODES:
         raise ValueError(f"Unsupported profit mode: {profit_mode}")
@@ -147,6 +158,11 @@ def compare_market_responses(
         for opportunity in opportunities:
             opportunity["variant_id"] = variant["variant_id"]
             opportunity["market_hash_name"] = variant["market_hash_name"]
+            sell_signal = (liquidity_signals or {}).get(variant["variant_id"], {}).get(
+                opportunity["sell_marketplace"]
+            )
+            opportunity["sell_liquidity"] = sell_signal
+            opportunity["risk_level"] = _flip_risk_level(opportunity, sell_signal)
         variant["opportunities"] = opportunities
         variant["quick_flip_errors"] = {
             marketplace: result["error"]
@@ -292,6 +308,85 @@ def _calculate_direction(
         ),
         **result.model_dump(),
     }
+
+
+def _flip_risk_level(
+    opportunity: dict[str, Any], signal: dict[str, Any] | None
+) -> str | None:
+    """Warn about listing exit risk without changing the monetary ROI."""
+    if opportunity["sell_mode"] != "listing" or opportunity["profit_cents"] <= 0:
+        return None
+    score = signal.get("score") if signal else None
+    if score is None:
+        return "unknown"
+    if score < 35:
+        return "critical"
+    if score < 60:
+        return "high"
+    if score < 75:
+        return "caution"
+    return None
+
+
+def _cached_liquidity_signals(
+    skin_id: str, market_responses: list[dict[str, Any]]
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Recompute risk from recent cached detail samples without external calls."""
+    quotes = {
+        (item["variant_id"], response["marketplace"]): item["listing"]
+        for response in market_responses
+        for item in response.get("variants", [])
+        if item.get("listing") and not item["listing"].get("stale")
+    }
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT d.marketplace, d.variant_id, d.listings, d.sales, d.buy_orders,
+                   d.sales_error, d.buy_orders_error, d.fetched_at
+            FROM marketplace_variant_details d
+            JOIN skin_variants v ON v.id = d.variant_id
+            WHERE v.skin_id = %s AND d.marketplace IN ('CSFloat', 'CSGO Market')
+            """,
+            (skin_id,),
+        ).fetchall()
+    now = datetime.now(timezone.utc)
+    result: dict[str, dict[str, dict[str, Any]]] = {}
+    for row in rows:
+        quote = quotes.get((row["variant_id"], row["marketplace"]))
+        fetched_at = row["fetched_at"]
+        ttl_name = (
+            "CSFLOAT_DETAILS_TTL_SECONDS" if row["marketplace"] == "CSFloat"
+            else "CSGOMARKET_DETAILS_TTL_SECONDS"
+        )
+        try:
+            ttl = max(1, int(os.getenv(ttl_name, "600")))
+        except ValueError:
+            ttl = 600
+        if (
+            quote is None or fetched_at is None or fetched_at.tzinfo is None
+            or fetched_at < now - timedelta(seconds=ttl)
+        ):
+            continue
+        if row["marketplace"] == "CSFloat":
+            detail_listings = row["listings"] or []
+            detail_listing_id = detail_listings[0].get("listing_id") if detail_listings else None
+            if not detail_listing_id or str(detail_listing_id) != str(quote.get("listing_id")):
+                continue
+        liquidity = calculate_liquidity(
+            row["sales"] or [], quote["price_cents"], row["buy_orders"] or [],
+            sales_available=not bool(row["sales_error"]),
+            orders_available=not bool(row["buy_orders_error"]),
+            now=now,
+        )
+        result.setdefault(row["variant_id"], {})[MARKET_RESPONSE_KEYS[row["marketplace"]]] = {
+            "score": liquidity["score"],
+            "sales_count_7d": liquidity["sales_count_7d"],
+            "price_retention_percent": liquidity["price_retention_percent"],
+            "near_bid_depth": liquidity["near_bid_depth"],
+            "data_status": liquidity["data_status"],
+            "fetched_at": fetched_at,
+        }
+    return result
 
 
 def _direction_supports_fees(

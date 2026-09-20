@@ -39,7 +39,7 @@ pnpm-debug.log*
 *.sqlite3
 *.db
 uploads/
-
+docker-compose.override.yml
 # IDE and operating system files
 .idea/
 .vscode/

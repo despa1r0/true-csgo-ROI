@@ -53,3 +53,5 @@ jobs:
         uses: actions/checkout@v6
       - name: Build Docker image
         run: docker build -t true-roi:test .
+      - name: Build CS.MONEY worker image
+        run: docker build -f Dockerfile.csmoney -t true-roi-csmoney:test .

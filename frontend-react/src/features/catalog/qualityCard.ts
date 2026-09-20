@@ -18,7 +18,7 @@ export function selectQualityCardMarketData(
 ): { quotes: QualityCardQuote[]; cheapest?: QualityCardQuote; best?: ProfitOpportunity } {
   const quotes = variants
     .flatMap((variant) => Object.entries(variant.markets)
-      .filter((entry): entry is [string, MarketPrice] => entry[1] != null)
+      .filter((entry): entry is [string, MarketPrice] => entry[1] != null && !entry[1].stale)
       .map(([marketplaceId, quote]) => ({ marketplaceId, quote, variant })))
     .sort((left, right) => left.quote.price_cents - right.quote.price_cents);
 

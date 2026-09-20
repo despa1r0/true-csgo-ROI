@@ -49,6 +49,16 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
+      - name: Build and push CS.MONEY worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.csmoney
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-csmoney:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-csmoney:latest
+
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest

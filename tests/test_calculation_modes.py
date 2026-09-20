@@ -220,7 +220,8 @@ def test_marketplace_options_expose_dynamic_capabilities_and_fee_rules():
     assert whitemarket["capabilities"]["supports_quick_sell"] is True
     assert whitemarket["capabilities"]["supports_sales_history"] is False
     assert whitemarket["fees"]["deposit"]["card"] is None
-    assert csmoney["capabilities"]["supports_listings"] is False
+    assert csmoney["capabilities"]["supports_listings"] is True
+    assert csmoney["capabilities"]["supports_float"] is True
     assert all(
         option["fee_configuration_version"] == "2026-09-04"
         for option in options.values()

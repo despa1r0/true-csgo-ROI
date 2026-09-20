@@ -132,6 +132,67 @@ def ensure_schema(connection: Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS marketplace_active_listings (
+            marketplace TEXT NOT NULL,
+            listing_id TEXT NOT NULL,
+            variant_id TEXT NOT NULL REFERENCES skin_variants(id) ON DELETE CASCADE,
+            price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
+            item_url TEXT,
+            float_value DOUBLE PRECISION,
+            paint_seed INTEGER,
+            image_url TEXT,
+            stickers JSONB NOT NULL DEFAULT '[]'::JSONB,
+            charms JSONB NOT NULL DEFAULT '[]'::JSONB,
+            fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (marketplace, listing_id)
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS marketplace_active_listings_variant_idx "
+        "ON marketplace_active_listings (marketplace, variant_id, price_cents)"
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS csmoney_variant_state (
+            variant_id TEXT PRIMARY KEY REFERENCES skin_variants(id) ON DELETE CASCADE,
+            fetched_at TIMESTAMPTZ,
+            last_attempt_at TIMESTAMPTZ,
+            page_items INTEGER NOT NULL DEFAULT 0,
+            exact_matches INTEGER NOT NULL DEFAULT 0,
+            is_partial BOOLEAN NOT NULL DEFAULT TRUE,
+            last_error TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS csmoney_refresh_jobs (
+            variant_id TEXT PRIMARY KEY REFERENCES skin_variants(id) ON DELETE CASCADE,
+            priority INTEGER NOT NULL DEFAULT 0,
+            requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            lease_until TIMESTAMPTZ,
+            attempts INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS csmoney_refresh_jobs_priority_idx "
+        "ON csmoney_refresh_jobs (priority DESC, requested_at)"
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS csmoney_wiki_price_history (
+            variant_id TEXT PRIMARY KEY REFERENCES skin_variants(id) ON DELETE CASCADE,
+            points JSONB NOT NULL DEFAULT '[]'::JSONB,
+            latest_at TIMESTAMPTZ,
+            fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            error TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS marketplace_syncs (
             marketplace TEXT PRIMARY KEY,
             fetched_at TIMESTAMPTZ NOT NULL
@@ -178,4 +239,21 @@ def ensure_schema(connection: Connection) -> None:
     connection.execute(
         "ALTER TABLE marketplace_variant_details "
         "ADD COLUMN IF NOT EXISTS details_version SMALLINT NOT NULL DEFAULT 1"
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS csmoney_demand_signals (
+            variant_id TEXT PRIMARY KEY REFERENCES skin_variants(id) ON DELETE CASCADE,
+            sales_source TEXT,
+            sales_count_7d INTEGER CHECK (sales_count_7d > 0),
+            status TEXT NOT NULL CHECK (status IN ('observed', 'unobserved', 'error')),
+            last_error TEXT,
+            checked_at TIMESTAMPTZ NOT NULL,
+            CHECK ((status = 'observed') = (sales_count_7d IS NOT NULL))
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS csmoney_demand_signals_checked_idx "
+        "ON csmoney_demand_signals (checked_at)"
     )

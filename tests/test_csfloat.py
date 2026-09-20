@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from io import BytesIO
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
@@ -417,13 +418,16 @@ def test_liquidity_uses_spread_depth_and_sales_velocity():
     ]
     orders = [{"price_cents": 9500, "quantity": 20}]
 
-    result = calculate_liquidity(sales, 10000, orders)
+    result = calculate_liquidity(
+        sales, 10000, orders, now=datetime(2026, 8, 22, tzinfo=timezone.utc)
+    )
 
-    assert result["score"] == 93
-    assert result["label"] == "high"
+    assert result["score"] == 67
+    assert result["label"] == "medium"
     assert result["price_retention_percent"] == 95.0
     assert result["near_bid_depth"] == 20
-    assert result["sales_per_day"] == 1.33
+    assert result["sales_count_7d"] == 3
+    assert result["sales_per_day"] == 0.43
 
 
 def test_liquidity_is_unavailable_without_ask_or_buy_orders():
@@ -431,6 +435,27 @@ def test_liquidity_is_unavailable_without_ask_or_buy_orders():
 
     assert result["score"] is None
     assert result["label"] == "unavailable"
+
+
+def test_liquidity_uses_fixed_seven_day_window_and_does_not_hide_missing_history():
+    now = datetime(2026, 9, 20, tzinfo=timezone.utc)
+    sales = [
+        {"sold_at": "2026-09-20T00:00:00Z"},
+        {"sold_at": "2026-09-12T00:00:00Z"},
+    ]
+    orders = [{"price_cents": 9500, "quantity": 20}]
+    observed = calculate_liquidity(sales, 10000, orders, now=now)
+    missing = calculate_liquidity(
+        sales, 10000, orders, sales_available=False, now=now
+    )
+
+    assert observed["sales_count_7d"] == 1
+    assert observed["sales_per_day"] == 0.14
+    assert observed["score"] < 75
+    assert missing["score"] is None
+    assert missing["sales_per_day"] is None
+    assert missing["data_status"] == "missing_sales"
+    assert calculate_liquidity([], 10000, orders, now=now)["score"] is None
 
 
 def test_quick_sell_is_calculated_for_the_selected_listing(monkeypatch):

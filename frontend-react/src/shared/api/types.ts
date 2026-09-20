@@ -128,6 +128,9 @@ export type ListingsResponse = {
   error?: string | null;
   cached?: boolean;
   stale?: boolean;
+  is_stale?: boolean;
+  is_partial?: boolean;
+  refresh_queued?: boolean;
   fetched_at?: string | null;
 };
 
@@ -151,6 +154,17 @@ export type ProfitOpportunity = ProfitResult & {
   buy_price_source?: "lowest_ask";
   sell_price_source?: "lowest_ask" | "best_bid";
   sell_mode: SellMode;
+  sell_liquidity?: SellLiquiditySignal | null;
+  risk_level?: FlipRiskLevel | null;
+};
+export type FlipRiskLevel = "critical" | "high" | "caution" | "unknown";
+export type SellLiquiditySignal = {
+  score: number | null;
+  sales_count_7d?: number | null;
+  price_retention_percent?: number | null;
+  near_bid_depth?: number | null;
+  data_status?: string;
+  fetched_at?: string | null;
 };
 export type VariantComparison = {
   variant_id: string;
@@ -169,6 +183,15 @@ export type MarketComparisonResponse = {
 };
 
 export type Sale = { sold_at: string; price_cents: number; float_value?: number | null };
+export type WikiPriceHistory = {
+  source: "csmoney_wiki_trade_quote";
+  source_url: string;
+  currency: "USD";
+  points: Array<{ at: string; price_cents: number }>;
+  latest_at: string | null;
+  fetched_at: string;
+  error: string | null;
+};
 export type BuyOrder = {
   price_cents: number;
   quantity: number;
@@ -184,8 +207,10 @@ export type MarketplaceDetails = {
     sales_count?: number | null;
     sales_scope?: string | null;
     sales_per_day?: number | null;
+    sales_count_7d?: number | null;
     liquidity_score?: number | null;
     liquidity_label?: string | null;
+    liquidity_data_status?: string | null;
     near_bid_depth?: number | null;
     sales_float_note?: string | null;
   };
@@ -204,6 +229,9 @@ export type MarketplaceDetails = {
   fetched_at?: string | null;
   cached?: boolean;
   stale?: boolean;
+  is_stale?: boolean;
+  is_partial?: boolean;
+  refresh_queued?: boolean;
 };
 
 export type AppliedFee = {

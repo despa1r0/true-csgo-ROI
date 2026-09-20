@@ -7,6 +7,7 @@ import { api, type CatalogueSearchResult, type SkinQuality } from "@/shared/api"
 import { formatUsd } from "@/shared/lib/format";
 import { ProfitSettings, type ProfitSettingsValue } from "./ProfitSettings";
 import { ListingDialog } from "./ListingDialog";
+import { FlipRiskNotice } from "./FlipRiskNotice";
 import { selectQualityCardMarketData } from "./qualityCard";
 import styles from "./market.module.css";
 
@@ -111,6 +112,7 @@ export function CatalogPage() {
                 <div className={styles.qualityPrice}><strong>{cheapest ? t("catalog.marketFrom", { price: formatUsd(cheapest.quote.price_cents, locale) }) : t("catalog.noPrice")}</strong><span>{cheapest ? marketplaces.find((item) => item.id === cheapest.marketplaceId)?.display_name ?? cheapest.marketplaceId : "—"}</span></div>
                 <div className={styles.marketMini}>{marketplaces.filter((market) => market.capabilities.supports_listings).map((market) => { const marketQuote = quotes.find((item) => item.marketplaceId === market.id && item.variant.variant_id === cheapest?.variant.variant_id)?.quote; return <span key={market.id}><small>{market.display_name}</small><b>{formatUsd(marketQuote?.price_cents, locale)}</b></span>; })}</div>
                 {best && <div className={best.profit_cents >= 0 ? styles.positive : styles.negative}>{best.buy_marketplace} → {best.sell_marketplace} · {best.profit_cents > 0 ? "+" : ""}{formatUsd(best.profit_cents, locale)} · {best.cash_roi_percent}%</div>}
+                {best && <FlipRiskNotice level={best.risk_level} score={best.sell_liquidity?.score} cashRoiPercent={best.cash_roi_percent} compact />}
               </motion.button>;
             })}
             {skinQuery.data.qualities.length === 0 && <p className={styles.emptyState}>{t("catalog.marketDataUnavailable")}</p>}

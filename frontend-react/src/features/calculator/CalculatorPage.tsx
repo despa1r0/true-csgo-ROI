@@ -6,6 +6,8 @@ import { useSearchParams } from "react-router-dom";
 
 import { api, type CalculationRequest, type CatalogueSearchResult, type PaymentMethod, type ProfitMode, type SellMode } from "@/shared/api";
 import { feeLabel, formatUsd, parseMoneyToCents } from "@/shared/lib/format";
+import { FlipRiskNotice } from "@/features/catalog/FlipRiskNotice";
+import { flipRiskLevel } from "@/features/catalog/flipRisk";
 import styles from "./calculator.module.css";
 
 type FeeFlags = { deposit: boolean; sell: boolean; withdraw: boolean };
@@ -33,6 +35,7 @@ export function CalculatorPage() {
   const [skinId, setSkinId] = useState<string | null>(searchParams.get("skin"));
   const [variantId, setVariantId] = useState<string | null>(searchParams.get("variant"));
   const [referenceAtSubmit, setReferenceAtSubmit] = useState<number | null>(null);
+  const [riskVariantAtSubmit, setRiskVariantAtSubmit] = useState<string | null>(null);
   const locale = i18n.resolvedLanguage === "ru" ? "ru-RU" : "en-US";
 
   useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(skinSearch.trim()), 280); return () => window.clearTimeout(timer); }, [skinSearch]);
@@ -81,11 +84,14 @@ export function CalculatorPage() {
   function selectSkin(result: CatalogueSearchResult) { setSkinId(result.id); setVariantId(null); setSkinSearch(result.name); }
   function setPreset(next: ProfitMode) { setMode(next); if (next !== "custom") { setFees(presetFlags[next]); setSellMode(next === "quick_flip" ? "fast_buy" : "listing"); } }
   function toggleFee(key: keyof FeeFlags) { if (!(mode === "quick_flip" && key === "deposit")) setMode("custom"); setFees((current) => ({ ...current, [key]: !current[key] })); }
-  function submit(event: React.FormEvent) { event.preventDefault(); if (buyCents != null && sellCents != null && buyMarket && sellMarket) { setReferenceAtSubmit(buyReference ?? null); calculation.mutate(calculationRequest(buyCents)); } }
+  function submit(event: React.FormEvent) { event.preventDefault(); if (buyCents != null && sellCents != null && buyMarket && sellMarket) { setReferenceAtSubmit(buyReference ?? null); setRiskVariantAtSubmit(selectedVariant?.variant_id ?? null); calculation.mutate(calculationRequest(buyCents)); } }
   function useReference(type: "buy" | "sell") { const cents = type === "buy" ? buyReference : sellReference; if (cents != null) (type === "buy" ? setBuyPrice : setSellPrice)((cents / 100).toFixed(2)); }
   function swap() { const oldBuy = buyMarket; setBuyMarket(sellMarket); setSellMarket(oldBuy); }
   const savings = buyReference != null && buyCents != null ? buyReference - buyCents : null;
   const savingsPercent = savings != null && buyReference ? savings / buyReference * 100 : null;
+  const sellLiquidity = selectedVariant?.opportunities.find((item) => item.sell_marketplace === sellMarket)?.sell_liquidity;
+  const riskLevel = selectedVariant?.variant_id === riskVariantAtSubmit && calculation.variables?.sell_marketplace === sellMarket && calculation.variables?.sell_mode === sellMode
+    ? flipRiskLevel(calculation.data?.profit_cents, sellMode, sellLiquidity?.score) : null;
 
   return <div className={styles.page}>
     <header className={styles.hero}><span>{t("calculator.eyebrow")}</span><h1>{t("calculator.title")}</h1><p>{t("calculator.subtitle")}</p></header>
@@ -127,6 +133,7 @@ export function CalculatorPage() {
         <header><span>{t("calculator.result")}</span>{calculation.data && <strong className={calculation.data.profit_cents > 0 ? styles.resultPositive : calculation.data.profit_cents < 0 ? styles.resultNegative : ""}>{t(calculation.data.profit_cents > 0 ? "calculator.positive" : calculation.data.profit_cents < 0 ? "calculator.negative" : "calculator.neutral")}</strong>}</header>
         {calculation.data ? <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={styles.resultBody}>
           <div className={styles.heroResult}><span>{t("calculator.netProfit")}</span><strong className={calculation.data.profit_cents >= 0 ? styles.resultPositive : styles.resultNegative}>{calculation.data.profit_cents > 0 ? "+" : ""}{formatUsd(calculation.data.profit_cents, locale)}</strong><small>{t("calculator.cashRoi")} · {calculation.data.effective_buy_cents === 0 ? "—" : `${calculation.data.cash_roi_percent}%`}</small></div>
+          <FlipRiskNotice level={riskLevel} score={sellLiquidity?.score} cashRoiPercent={calculation.data.cash_roi_percent} />
           <ResultRow label={t("calculator.effectiveBuy")} value={formatUsd(calculation.data.effective_buy_cents, locale)} /><ResultRow label={t("calculator.depositFee")} value={formatUsd(calculation.data.deposit_fee_cents, locale)} />
           <ResultRow label={t("calculator.effectivePayout")} value={formatUsd(calculation.data.effective_payout_cents, locale)} /><ResultRow label={t("calculator.sellFee")} value={formatUsd(calculation.data.sell_fee_cents, locale)} /><ResultRow label={t("calculator.withdrawFee")} value={formatUsd(calculation.data.withdraw_fee_cents, locale)} />
           <div className={styles.roiGrid}><ResultMetric label={t("calculator.grossProfit")} value={formatUsd(calculation.data.gross_profit_cents, locale)} note={`${t("calculator.grossRoi")} · ${calculation.data.buy_price_cents === 0 ? "—" : `${calculation.data.gross_roi_percent}%`}`} /><ResultMetric label={t("calculator.marketProfit")} value={formatUsd(calculation.data.market_profit_cents, locale)} note={`${t("calculator.marketRoi")} · ${calculation.data.buy_price_cents === 0 ? "—" : `${calculation.data.market_roi_percent}%`}`} /><ResultMetric label={t("calculator.breakEven")} value={formatUsd(calculation.data.break_even_sell_price_cents, locale)} /></div>

@@ -13,6 +13,7 @@ import type {
   ProfitResult,
   SearchSkinsParams,
   SkinDetails,
+  WikiPriceHistory,
 } from "./types";
 
 export const api = {
@@ -40,6 +41,11 @@ export const api = {
   variantDetails: (variantId: string, marketplaceId: string, signal?: AbortSignal) =>
     apiClient.get<MarketplaceDetails>(
       `/api/variants/${encodeURIComponent(variantId)}/market/${encodeURIComponent(marketplaceId)}`,
+      { signal },
+    ),
+  csmoneyPriceHistory: (variantId: string, signal?: AbortSignal) =>
+    apiClient.get<WikiPriceHistory>(
+      `/api/variants/${encodeURIComponent(variantId)}/market/csmoney/price-history`,
       { signal },
     ),
   listingQuickSell: (listingId: string, signal?: AbortSignal) =>

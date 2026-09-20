@@ -1,3 +1,6 @@
+import pytest
+from datetime import datetime, timezone
+
 from backend.app import market_comparison
 from backend.app.market_comparison import compare_market_responses
 
@@ -69,6 +72,58 @@ def test_compares_exact_variant_and_calculates_both_profit_directions():
     )
     assert reverse["profit_cents"] == -320
     assert reverse["cash_roi_percent"] == -24.62
+
+
+@pytest.mark.parametrize(
+    ("score", "expected"),
+    [(None, "unknown"), (30, "critical"), (35, "high"),
+     (59, "high"), (60, "caution"), (75, None)],
+)
+def test_listing_flip_warning_uses_sell_market_liquidity(score, expected):
+    signal = None if score is None else {"score": score, "sales_count_7d": 2}
+    result = compare_market_responses(
+        "skin-1",
+        [market_response("CSFloat", 1000), market_response("CSGO Market", 1200)],
+        deposit_method="crypto", withdraw_method="crypto", use_deposit_fee=True,
+        liquidity_signals={"variant-1": {"csgomarket": signal}} if signal else {},
+    )
+
+    sale = next(item for item in result["variants"][0]["opportunities"]
+                if item["sell_marketplace"] == "csgomarket")
+    assert sale["risk_level"] == expected
+    assert sale["sell_liquidity"] == signal
+
+
+def test_cached_csfloat_bid_is_not_assigned_to_a_different_listing(monkeypatch):
+    row = {
+        "marketplace": "CSFloat", "variant_id": "variant-1",
+        "listings": [{"listing_id": "old"}],
+        "sales": [{"sold_at": datetime.now(timezone.utc).isoformat()}],
+        "buy_orders": [{"price_cents": 900, "quantity": 1}],
+        "sales_error": None, "buy_orders_error": None,
+        "fetched_at": datetime.now(timezone.utc),
+    }
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, *_args):
+            return self
+
+        def fetchall(self):
+            return [row]
+
+    monkeypatch.setattr(market_comparison, "get_connection", FakeConnection)
+    responses = [market_response("CSFloat", 1000, listing_extra={"listing_id": "new"})]
+    assert market_comparison._cached_liquidity_signals("skin-1", responses) == {}
+
+    row["listings"][0]["listing_id"] = "new"
+    signal = market_comparison._cached_liquidity_signals("skin-1", responses)
+    assert signal["variant-1"]["csfloat"]["score"] is not None
 
 
 def test_keeps_cached_market_error_and_handles_one_available_price():
@@ -332,6 +387,12 @@ def test_quick_flip_loads_fast_buy_for_every_available_market(monkeypatch):
         "get_whitemarket_prices",
         lambda _skin_id: market_response("WhiteMarket", None),
     )
+    monkeypatch.setattr(
+        market_comparison,
+        "get_csmoney_prices",
+        lambda _skin_id: market_response("CS.MONEY", None),
+    )
+    monkeypatch.setattr(market_comparison, "_cached_liquidity_signals", lambda *_args: {})
     monkeypatch.setattr(
         market_comparison,
         "get_csgomarket_variant_fast_buy",

@@ -15,6 +15,11 @@ The Compose project is named `true-roi` to keep its existing PostgreSQL volume. 
 
 `catalog-seed` is a one-off service, so Compose manages its container name. Docker's `local` log driver rotates each service log at 10 MB and keeps three files. The deploy job prints the image SHA and final `docker compose ps --all` output, waits up to two minutes for a healthy API, and checks both workers are running. On API health failure it prints the last 30 API log lines.
 
+The deployment check is process-level only. A successful run does not prove that
+CS.MONEY, CSFloat, or another external provider returned fresh market data. The
+current provider-level limitations are documented in
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
+
 On the VPS:
 
 ```bash

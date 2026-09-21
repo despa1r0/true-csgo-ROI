@@ -1,6 +1,6 @@
 # trueROI
 
-Локальный каталог предметов Counter-Strike 2 с React-интерфейсом, быстрым поиском, реальными лотами маркетплейсов и серверным расчётом ROI. Каталог берётся из [ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) и хранится в PostgreSQL; рыночные данные поступают через адаптеры CSFloat, CSGO Market и White.Market.
+Локальный каталог предметов Counter-Strike 2 с React-интерфейсом, быстрым поиском, данными маркетплейсов и серверным расчётом ROI. Каталог берётся из [ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) и хранится в PostgreSQL; рыночные данные поступают через адаптеры CSFloat, CSGO Market, White.Market и CS.MONEY. Текущие ограничения production перечислены в [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
 
 ## Быстрый запуск на Linux и Windows
 
@@ -114,7 +114,8 @@ docker compose down -v
 
 - React + TypeScript интерфейс из `frontend-react` с русской и английской локализацией;
 - каталог на `/` с автоподсказками, фильтрами по типу предмета, оружию, редкости и коллекции, wear-вариантами и ценами площадок; при импорте исключаются entries, которые нельзя надёжно адресовать и продавать на маркетплейсах;
-- реальные активные лоты CSFloat, CSGO Market и White.Market с доступными для каждой площадки фильтрами и режимом `All marketplaces`;
+- активные лоты CSFloat, CSGO Market и White.Market при доступности внешних API, с доступными для каждой площадки фильтрами и режимом `All marketplaces`;
+- фоновая интеграция CS.MONEY; на production storefront сейчас возвращает HTTP 403, поэтому реальные лоты CS.MONEY недоступны, а Wiki Market используется только как возможная агрегированная сводка;
 - наклейки и charms ищутся в общем каталоге как самостоятельные предметы; внутри списка лотов фильтры `has_stickers`/`has_charm` пока проверяют только наличие attachment, а не его конкретное имя/ID;
 - hover по attachment показывает его справочную цену, когда провайдер передал её; отсутствующая цена не вычисляется и не подменяется;
 - модальное окно аналитики с возвратом в каталог, вкладками истории, активных лотов, быстрой продажи и сравнения площадок;
@@ -251,17 +252,22 @@ GET /api/skins/{skin_id}
 GET /api/skins/{skin_id}/market/csfloat
 GET /api/skins/{skin_id}/market/csgomarket
 GET /api/skins/{skin_id}/market/whitemarket
+GET /api/skins/{skin_id}/market/csmoney
 GET /api/skins/{skin_id}/markets/compare?profit_mode=smart&deposit_method=crypto&withdraw_method=crypto
 GET /api/skins/{skin_id}/market/csfloat/listings?sort_by=best_deal&wear=field-tested&variant=normal&has_stickers=true&has_charm=false
 GET /api/skins/{skin_id}/market/csgomarket/listings?sort_by=lowest_price&wear=field-tested&variant=normal
 GET /api/skins/{skin_id}/market/whitemarket/listings?wear=field-tested&variant=normal
+GET /api/skins/{skin_id}/market/csmoney/listings?wear=field-tested&variant=normal
 GET /api/listings/{listing_id}/market/csfloat/quick-sell
 GET /api/variants/{variant_id}/market/csfloat
 GET /api/variants/{variant_id}/market/csgomarket
 GET /api/variants/{variant_id}/market/whitemarket
+GET /api/variants/{variant_id}/market/csmoney
+GET /api/variants/{variant_id}/market/csmoney/price-history
 ```
 
-- Маршруты `/market/csfloat`, `/market/csgomarket` и `/market/whitemarket` возвращают кэшированный
+- Маршруты `/market/csfloat`, `/market/csgomarket`, `/market/whitemarket` и
+  `/market/csmoney` возвращают кэшированный
   индекс минимальных цен для всех вариантов выбранного скина.
 - `/markets/compare` сопоставляет варианты двух площадок, показывает самую дешёвую
   цену, gross spread и обе стороны сделки с расчётом ROI. Принимает
@@ -316,14 +322,17 @@ buy-now листинги, подходящие buy orders и доступную 
 продажи, а не вероятность продажи и не поправочный коэффициент прибыли:
 
 ```text
-score = 65% * price_retention
-      + 25% * near_bid_depth
-      + 10% * sales_velocity
+depth_score = min(100, near_bid_depth * 10)
+activity_score = min(100, sqrt(observed_sales_7d / 14) * 100)
+execution = 60% * price_retention
+          + 40% * depth_score
+score = 40% * execution
+      + 60% * activity_score
 ```
 
 `price_retention` показывает, какую долю минимальной цены сохраняет лучшая заявка
 на покупку. `near_bid_depth` учитывает количество заявок в пределах 5% от лучшей,
-а `sales_velocity` — продажи в день по доступной истории CSFloat. Заявки
+а `observed_sales_7d` — число наблюдаемых продаж за последние семь дней. Заявки
 проверяются относительно конкретного активного лота; для инвентарного предмета
 результат может отличаться из-за float и наклеек.
 
@@ -338,8 +347,11 @@ Profit Engine не получает liquidity score: прибыль и ROI ра�
 CSFLOAT_API_KEY=ваш_ключ
 ```
 
-Ключ не передаётся во frontend и не возвращается API приложения. Весь индекс цен
-CSFloat загружается одним запросом; частоту обновления можно изменить через
+Ключ не передаётся во frontend и не возвращается API приложения. Публичный
+индекс минимальных цен CSFloat загружается отдельно от конкретных лотов и может
+работать при недоступном или ограниченном listings API. Поэтому цена в карточке
+не гарантирует наличие доступного конкретного лота. Частоту обновления можно
+изменить через
 `CSFLOAT_CACHE_TTL_SECONDS`. Время хранения подробностей регулируется через
 `CSFLOAT_DETAILS_TTL_SECONDS`.
 

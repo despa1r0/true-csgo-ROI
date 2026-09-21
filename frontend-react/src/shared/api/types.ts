@@ -130,6 +130,7 @@ export type ListingsResponse = {
   stale?: boolean;
   is_stale?: boolean;
   is_partial?: boolean;
+  quote_source?: "storefront" | "wiki_market_summary";
   refresh_queued?: boolean;
   fetched_at?: string | null;
 };
@@ -143,6 +144,8 @@ export type MarketPrice = {
   quantity: number | null;
   fetched_at: string | null;
   stale: boolean;
+  source?: "storefront" | "wiki_market_summary";
+  is_partial?: boolean;
 };
 
 export type ProfitOpportunity = ProfitResult & {
@@ -231,6 +234,7 @@ export type MarketplaceDetails = {
   stale?: boolean;
   is_stale?: boolean;
   is_partial?: boolean;
+  quote_source?: "storefront" | "wiki_market_summary";
   refresh_queued?: boolean;
 };
 

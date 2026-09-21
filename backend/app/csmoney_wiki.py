@@ -127,6 +127,32 @@ def fetch_price_history(item_name: str, market_hash_name: str, *, now: datetime 
     return parse_price_history(rows, name_id=name_id, now=now)
 
 
+def fetch_market_summary(item_name: str, market_hash_name: str) -> dict[str, int]:
+    """Read the Wiki's current Market minimum for one exact variant.
+
+    This is a market-level quote, never an individual listing or a sale.
+    """
+    rows = _query(
+        "query($name: String!) { get_min_available(name: $name) "
+        "{ name source { market { lowestPrice count } } } }",
+        {"name": item_name},
+    ).get("get_min_available")
+    if not isinstance(rows, list):
+        raise WikiPriceError("Wiki Market summary is missing")
+    matches = [row for row in rows if isinstance(row, dict) and row.get("name") == market_hash_name]
+    if len(matches) != 1:
+        raise WikiPriceError("Wiki Market variant is unavailable or ambiguous")
+    source = matches[0].get("source")
+    market = source.get("market") if isinstance(source, dict) else None
+    if not isinstance(market, dict):
+        raise WikiPriceError("Wiki Market quote is unavailable")
+    price_cents = _usd_cents(market.get("lowestPrice"))
+    count = market.get("count")
+    if price_cents is None or isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise WikiPriceError("Wiki Market quote is invalid")
+    return {"price_cents": price_cents, "quantity": count}
+
+
 def get_variant_price_history(variant_id: str) -> dict[str, Any] | None:
     context = load_variant_context(variant_id)
     if context is None:

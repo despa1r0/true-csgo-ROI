@@ -74,6 +74,25 @@ def test_compares_exact_variant_and_calculates_both_profit_directions():
     assert reverse["cash_roi_percent"] == -24.62
 
 
+def test_stale_quote_is_visible_but_excluded_from_profit_calculation():
+    result = compare_market_responses(
+        "skin-1",
+        [
+            market_response("CSFloat", 1000, listing_extra={"stale": True}),
+            market_response("CSGO Market", 1200),
+        ],
+        deposit_method="crypto",
+        withdraw_method="crypto",
+        use_deposit_fee=True,
+    )
+
+    variant = result["variants"][0]
+    assert variant["markets"]["csfloat"]["stale"] is True
+    assert variant["cheapest_marketplace"] == "csgomarket"
+    assert variant["gross_spread_cents"] is None
+    assert variant["opportunities"] == []
+
+
 @pytest.mark.parametrize(
     ("score", "expected"),
     [(None, "unknown"), (30, "critical"), (35, "high"),

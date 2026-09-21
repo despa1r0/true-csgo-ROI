@@ -102,3 +102,30 @@ def test_recent_cache_with_old_latest_point_is_refreshed(monkeypatch):
 
     assert result["points"][0]["price_cents"] == 2956
     assert any("INSERT INTO csmoney_wiki_price_history" in sql for sql in queried)
+
+
+def test_market_summary_matches_exact_variant_and_usd_price(monkeypatch):
+    monkeypatch.setattr(csmoney_wiki, "_query", lambda _query, _variables: {
+        "get_min_available": [
+            {"name": "AK-47 | Redline (Minimal Wear)", "source": {"market": {
+                "lowestPrice": 40, "count": 2}}},
+            {"name": "AK-47 | Redline (Field-Tested)", "source": {"market": {
+                "lowestPrice": "25.78", "count": 1519}}},
+        ],
+    })
+    assert csmoney_wiki.fetch_market_summary(
+        "AK-47 | Redline", "AK-47 | Redline (Field-Tested)"
+    ) == {"price_cents": 2578, "quantity": 1519}
+
+
+def test_market_summary_rejects_missing_or_ambiguous_variant(monkeypatch):
+    monkeypatch.setattr(csmoney_wiki, "_query", lambda _query, _variables: {
+        "get_min_available": [
+            {"name": "AK-47 | Redline (Minimal Wear)", "source": {"market": {
+                "lowestPrice": 40, "count": 2}}},
+        ],
+    })
+    with pytest.raises(csmoney_wiki.WikiPriceError, match="variant"):
+        csmoney_wiki.fetch_market_summary(
+            "AK-47 | Redline", "AK-47 | Redline (Field-Tested)"
+        )

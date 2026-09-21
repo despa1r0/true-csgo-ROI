@@ -14,6 +14,7 @@ from psycopg.types.json import Jsonb
 from .database import get_connection
 from .marketplaces.base import MarketplaceRequestError
 from .marketplaces.csfloat import (
+    CsfloatAuthError,
     CsfloatRequestError,
     get_active_listings,
     get_buy_orders,
@@ -21,6 +22,7 @@ from .marketplaces.csfloat import (
     get_price_index,
     get_sales_history,
     search_market_listings,
+    validate_api_key,
 )
 from .marketplaces.whitemarket import get_active_listings as get_whitemarket_active_listings
 from .marketplaces.whitemarket import get_buy_orders as get_whitemarket_buy_orders
@@ -65,19 +67,32 @@ def _positive_int_env(name: str, default: int) -> int:
 
 def get_csfloat_prices(skin_id: str) -> dict[str, Any]:
     """Synchronize CSFloat's global index when stale and return one skin's prices."""
+    # The price-list is public and returns HTTP 200 even for a bad API key.
+    # Check a listings route separately so callers never treat that 200 as
+    # proof that authenticated listing and buy-order requests work.
+    try:
+        validate_api_key()
+    except CsfloatAuthError as error:
+        auth_status, auth_error = "auth_failed", str(error)
+    except CsfloatRequestError as error:
+        auth_status, auth_error = "unavailable", str(error)
+    else:
+        auth_status, auth_error = "ok", None
+
     ttl_seconds = _positive_int_env(
         "CSFLOAT_CACHE_TTL_SECONDS", DEFAULT_CACHE_TTL_SECONDS
     )
     variants, cached, sync_is_fresh = _load_skin_cache(skin_id, MARKETPLACE, ttl_seconds)
 
     if sync_is_fresh:
-        return _response(MARKETPLACE, variants, cached, ttl_seconds, cached=True)
+        result = _response(MARKETPLACE, variants, cached, ttl_seconds, cached=True)
+        return _with_csfloat_auth_status(result, auth_status, auth_error)
 
     try:
         price_index = get_price_index()
         _store_csfloat_price_index(price_index)
     except CsfloatRequestError as error:
-        return _response(
+        result = _response(
             MARKETPLACE,
             variants,
             cached,
@@ -86,13 +101,28 @@ def get_csfloat_prices(skin_id: str) -> dict[str, Any]:
             stale=True,
             error=str(error),
         )
+        return _with_csfloat_auth_status(result, auth_status, auth_error)
 
     fetched_at = datetime.now(timezone.utc)
     fresh_rows = {
         variant["id"]: _csfloat_index_row(variant, price_index, fetched_at)
         for variant in variants
     }
-    return _response(MARKETPLACE, variants, fresh_rows, ttl_seconds, cached=False)
+    result = _response(MARKETPLACE, variants, fresh_rows, ttl_seconds, cached=False)
+    return _with_csfloat_auth_status(result, auth_status, auth_error)
+
+
+def _with_csfloat_auth_status(
+    result: dict[str, Any], status: str, error: str | None
+) -> dict[str, Any]:
+    result["provider_auth_status"] = status
+    result["provider_auth_error"] = error
+    if error:
+        for variant in result["variants"]:
+            variant["error"] = ". ".join(
+                part for part in (variant["error"], error) if part
+            )
+    return result
 
 
 def get_whitemarket_prices(skin_id: str) -> dict[str, Any]:
@@ -139,36 +169,75 @@ def get_whitemarket_prices(skin_id: str) -> dict[str, Any]:
     ]
 
     fresh_rows: dict[str, dict[str, Any]] = {}
-    fetch_error: str | None = None
+    fetch_errors: dict[str, str] = {}
     if stale_variants:
         fetched_at = datetime.now(timezone.utc)
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = {
-                executor.submit(
-                    get_whitemarket_cheapest_listing, variant["market_hash_name"]
-                ): variant
-                for variant in stale_variants
-            }
-            for future, variant in futures.items():
-                try:
-                    listing = future.result()
-                except MarketplaceRequestError as error:
-                    fetch_error = str(error)
-                    continue
-                fresh_rows[variant["id"]] = _whitemarket_listing_row(variant, listing, fetched_at)
+        # Probe one variant before launching a request for every stale one.
+        # An invalid partner token otherwise causes a burst of identical
+        # authorization failures and makes the entire comparison wait for it.
+        first, *remaining = stale_variants
+        try:
+            listing = get_whitemarket_cheapest_listing(first["market_hash_name"])
+        except MarketplaceRequestError as error:
+            fetch_errors[first["id"]] = str(error)
+            if _whitemarket_auth_error(error):
+                fetch_errors.update({variant["id"]: str(error) for variant in remaining})
+                remaining = []
+        else:
+            row = _whitemarket_listing_row(first, listing, fetched_at)
+            row["is_fresh"] = True
+            fresh_rows[first["id"]] = row
+
+        if remaining:
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                futures = {
+                    executor.submit(
+                        get_whitemarket_cheapest_listing, variant["market_hash_name"]
+                    ): variant
+                    for variant in remaining
+                }
+                for future, variant in futures.items():
+                    try:
+                        listing = future.result()
+                    except MarketplaceRequestError as error:
+                        fetch_errors[variant["id"]] = str(error)
+                        continue
+                    row = _whitemarket_listing_row(variant, listing, fetched_at)
+                    row["is_fresh"] = True
+                    fresh_rows[variant["id"]] = row
 
     if fresh_rows:
         _store_whitemarket_listing_rows(list(fresh_rows.values()))
 
     merged_rows = {**cached, **fresh_rows}
-    return _response(
+    result = _response(
         WHITEMARKET_MARKETPLACE,
         variants,
         merged_rows,
         ttl_seconds,
         cached=not fresh_rows,
-        stale=bool(fetch_error) and bool(cached),
-        error=fetch_error,
+        stale=bool(fetch_errors),
+    )
+    for variant in result["variants"]:
+        error = fetch_errors.get(variant["variant_id"])
+        if error:
+            listing = variant["listing"]
+            variant["error"] = (
+                f"{error}. Показана последняя сохранённая цена."
+                if listing and listing["stale"] else error
+            )
+    return result
+
+
+def _whitemarket_auth_error(error: MarketplaceRequestError) -> bool:
+    """Recognize provider-wide token failures that should stop the fanout."""
+    message = str(error).casefold()
+    return any(
+        marker in message
+        for marker in (
+            "whitemarket_partner_token", "partner token", "access token",
+            "http 401", "http 403", "unauthorized", "denied",
+        )
     )
 
 
@@ -1232,7 +1301,7 @@ def _response(
                 "float_value": row.get("float_value"),
                 "quantity": row.get("quantity"),
                 "fetched_at": row.get("fetched_at"),
-                "stale": stale,
+                "stale": stale and not bool(row.get("is_fresh")),
             }
         results.append(
             {
@@ -1242,7 +1311,7 @@ def _response(
                 "cached": cached,
                 "error": (
                     f"{error}. Показана последняя сохранённая цена."
-                    if error and listing
+                    if error and listing and listing["stale"]
                     else error
                 ),
             }

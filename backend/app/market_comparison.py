@@ -130,7 +130,7 @@ def compare_market_responses(
         available = [
             (marketplace, listing)
             for marketplace, listing in variant["markets"].items()
-            if listing is not None
+            if listing is not None and not listing.get("stale")
         ]
         available.sort(key=lambda pair: pair[1]["price_cents"])
         variant["cheapest_marketplace"] = available[0][0] if available else None

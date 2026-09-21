@@ -88,3 +88,28 @@ def test_unresolved_full_page_invalidates_old_quote_without_deleting_old_rows(mo
     assert stored == 0
     assert any("fetched_at = NULL" in sql for sql in statements)
     assert not any("DELETE FROM marketplace_active_listings" in sql for sql in statements)
+
+
+def test_wiki_minimum_is_a_summary_without_synthetic_listings(monkeypatch):
+    statements = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, sql, params):
+            statements.append((sql, params))
+
+    monkeypatch.setattr(csmoney_data, "get_connection", FakeConnection)
+    csmoney_data.store_wiki_market_summary(
+        "redline_ft", {"price_cents": 2578, "quantity": 1519},
+        item_url="https://cs.money/pl/market/buy/?search=AK-47",
+    )
+
+    assert any("DELETE FROM marketplace_active_listings" in sql for sql, _ in statements)
+    assert any("listing_id, price_cents" in sql and "NULL" in sql for sql, _ in statements)
+    assert not any("INSERT INTO marketplace_active_listings" in sql for sql, _ in statements)
+    assert any("'wiki_market_summary'" in sql for sql, _ in statements)

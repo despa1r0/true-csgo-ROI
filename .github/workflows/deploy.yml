@@ -100,9 +100,14 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid image tag: expected a commit SHA" >&2
+            exit 1
+          fi
           scp -P "$VPS_PORT" docker-compose.prod.yml \
-            "$VPS_USER@$VPS_HOST:/opt/true-roi/docker-compose.prod.yml"
+            "$VPS_USER@$VPS_HOST:/opt/true-roi/docker-compose.prod.yml.$IMAGE_TAG.staged"
 
       - name: Deploy to VPS
         env:
@@ -111,9 +116,66 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
-          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "cd /opt/true-roi && \
-            anonymous_docker_config=\$(mktemp -d) && \
-            trap 'rmdir \"\$anonymous_docker_config\" 2>/dev/null || true' EXIT && \
-            DOCKER_CONFIG=\"\$anonymous_docker_config\" IMAGE_TAG=$IMAGE_TAG docker compose -f docker-compose.prod.yml pull && \
-            IMAGE_TAG=$IMAGE_TAG docker compose -f docker-compose.prod.yml up -d"
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "bash -s -- '$IMAGE_TAG'" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/true-roi
+
+          image_tag=$1
+          if [[ ! "$image_tag" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid image tag: expected a commit SHA" >&2
+            exit 1
+          fi
+          if ! command -v flock >/dev/null; then
+            echo "Deployment requires flock (util-linux) on the VPS" >&2
+            exit 1
+          fi
+
+          exec 9>.deploy.lock
+          if ! flock -w 300 9; then
+            echo "Another deployment still holds /opt/true-roi/.deploy.lock" >&2
+            exit 1
+          fi
+
+          staged_file="docker-compose.prod.yml.$image_tag.staged"
+          if [[ ! -f "$staged_file" ]]; then
+            echo "Staged production Compose file is missing" >&2
+            exit 1
+          fi
+          anonymous_docker_config=$(mktemp -d)
+          trap 'rm -f -- "$staged_file"; rmdir "$anonymous_docker_config" 2>/dev/null || true' EXIT
+          export DOCKER_CONFIG="$anonymous_docker_config" IMAGE_TAG="$image_tag"
+          docker compose --ansi never -f "$staged_file" config --quiet
+          compose=(docker compose --ansi never -f "$staged_file")
+
+          echo "Pulling production images for $image_tag"
+          "${compose[@]}" pull --quiet
+
+          mv -f -- "$staged_file" docker-compose.prod.yml
+          compose=(docker compose --ansi never -f docker-compose.prod.yml)
+          echo "Starting production services"
+          "${compose[@]}" up -d
+
+          api_state=unknown
+          for ((attempt = 1; attempt <= 24; attempt++)); do
+            api_state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' true-roi-api 2>/dev/null || true)
+            if [[ "$api_state" == healthy || "$api_state" == unhealthy || "$api_state" == exited ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          "${compose[@]}" ps --all
+          if [[ "$api_state" != healthy ]]; then
+            echo "API did not become healthy (state: $api_state)" >&2
+            "${compose[@]}" logs --tail=30 api >&2
+            exit 1
+          fi
+          for service in true-roi-csmoney-crawler true-roi-csmoney-demand; do
+            state=$(docker inspect --format '{{.State.Status}}' "$service" 2>/dev/null || true)
+            if [[ "$state" != running ]]; then
+              echo "$service is not running (state: $state)" >&2
+              exit 1
+            fi
+          done
+          echo "Deployment healthy: $image_tag"
+          REMOTE

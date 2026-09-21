@@ -43,13 +43,28 @@ def search_skins(
     conditions: list[str] = []
     parameters: list[Any] = []
     if len(tokens) == 1:
-        conditions.append("s.name ILIKE %s")
-        parameters.append(f"%{tokens[0]}%")
+        conditions.append(
+            "(s.name ILIKE %s OR EXISTS ("
+            "SELECT 1 FROM skin_variants search_variant "
+            "WHERE search_variant.skin_id = s.id "
+            "AND search_variant.market_hash_name ILIKE %s))"
+        )
+        parameters.extend([f"%{tokens[0]}%"] * 2)
     elif tokens:
         # In a multi-word query every term starts a word. This avoids matching
         # "AWP As" against "AWP | Hyper Beast" through the middle of "Beast".
-        conditions = ["s.name ~* %s" for _token in tokens]
-        parameters = [rf"\m{re.escape(token)}" for token in tokens]
+        base_matches = " AND ".join("s.name ~* %s" for _token in tokens)
+        variant_matches = " AND ".join(
+            "search_variant.market_hash_name ~* %s" for _token in tokens
+        )
+        conditions.append(
+            f"(({base_matches}) OR EXISTS ("
+            "SELECT 1 FROM skin_variants search_variant "
+            "WHERE search_variant.skin_id = s.id "
+            f"AND {variant_matches}))"
+        )
+        patterns = [rf"\m{re.escape(token)}" for token in tokens]
+        parameters.extend(patterns + patterns)
     if weapon:
         conditions.append("s.weapon_id = %s")
         parameters.append(weapon)

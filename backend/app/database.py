@@ -92,6 +92,10 @@ def ensure_schema(connection: Connection) -> None:
         "CREATE INDEX IF NOT EXISTS skin_variants_skin_idx ON skin_variants (skin_id)"
     )
     connection.execute(
+        "CREATE INDEX IF NOT EXISTS skin_variants_market_name_trgm_idx "
+        "ON skin_variants USING GIN (market_hash_name gin_trgm_ops)"
+    )
+    connection.execute(
         """
         CREATE TABLE IF NOT EXISTS skin_collections (
             skin_id TEXT NOT NULL REFERENCES skins(id) ON DELETE CASCADE,
@@ -161,9 +165,13 @@ def ensure_schema(connection: Connection) -> None:
             page_items INTEGER NOT NULL DEFAULT 0,
             exact_matches INTEGER NOT NULL DEFAULT 0,
             is_partial BOOLEAN NOT NULL DEFAULT TRUE,
-            last_error TEXT
+            last_error TEXT,
+            quote_source TEXT
         )
         """
+    )
+    connection.execute(
+        "ALTER TABLE csmoney_variant_state ADD COLUMN IF NOT EXISTS quote_source TEXT"
     )
     connection.execute(
         """

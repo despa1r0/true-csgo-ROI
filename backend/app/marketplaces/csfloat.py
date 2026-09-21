@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import threading
 import time
@@ -18,10 +19,64 @@ CSFLOAT_SORTS = {"best_deal", "lowest_price"}
 
 _rate_limit_lock = threading.Lock()
 _route_cooldowns: dict[str, float] = {}
+_auth_check_lock = threading.Lock()
+_auth_check_key: str | None = None
+_auth_check_at = 0.0
 
 
 class CsfloatRequestError(MarketplaceRequestError):
     """Безопасное для отображения пользователю описание сбоя CSFloat."""
+
+
+class CsfloatAuthError(CsfloatRequestError):
+    """CSFloat rejected or cannot use the configured API key."""
+
+
+_auth_check_error: tuple[type[CsfloatRequestError], str] | None = None
+_auth_check_ttl_seconds = 300
+LOG = logging.getLogger(__name__)
+
+
+def validate_api_key() -> None:
+    """Probe an authenticated route; the public price index cannot verify keys.
+
+    Cache the result to avoid one extra request per skin and report failures
+    without hiding publicly available prices.
+    """
+    global _auth_check_key, _auth_check_at, _auth_check_error
+
+    api_key = os.getenv("CSFLOAT_API_KEY")
+    if not api_key:
+        raise CsfloatAuthError("Не настроен CSFLOAT_API_KEY")
+
+    with _auth_check_lock:
+        now = time.monotonic()
+        if api_key == _auth_check_key and now - _auth_check_at < _auth_check_ttl_seconds:
+            if _auth_check_error:
+                error_type, message = _auth_check_error
+                raise error_type(message)
+            return
+
+        try:
+            payload = _authenticated_get(
+                f"{CSFLOAT_LISTINGS_URL}?limit=1",
+                error_message="Не удалось проверить доступ к CSFloat",
+            )
+            if isinstance(payload, dict):
+                payload = payload.get("data")
+            if not isinstance(payload, list):
+                raise CsfloatRequestError("CSFloat вернул неожиданный ответ при проверке API-ключа")
+        except CsfloatRequestError as error:
+            _auth_check_error = (type(error), str(error))
+            _auth_check_key = api_key
+            _auth_check_at = now
+            status = "provider_auth_failed" if isinstance(error, CsfloatAuthError) else "provider_unavailable"
+            LOG.warning("CSFloat %s: %s", status, error)
+            raise
+
+        _auth_check_error = None
+        _auth_check_key = api_key
+        _auth_check_at = now
 
 
 def get_lowest_price(market_hash_name: str) -> MarketPrice | None:
@@ -39,7 +94,7 @@ def get_lowest_price(market_hash_name: str) -> MarketPrice | None:
     )
     api_key = os.getenv("CSFLOAT_API_KEY")
     if not api_key:
-        raise CsfloatRequestError("Не настроен CSFLOAT_API_KEY")
+        raise CsfloatAuthError("Не настроен CSFLOAT_API_KEY")
 
     request = Request(
         f"{CSFLOAT_LISTINGS_URL}?{query}",
@@ -54,9 +109,9 @@ def get_lowest_price(market_hash_name: str) -> MarketPrice | None:
         listings = _load_json_with_rate_limit_retry(request, timeout=10)
     except HTTPError as error:
         if error.code == 401:
-            raise CsfloatRequestError("CSFloat отклонил API-ключ. Пересоздайте ключ в профиле") from error
+            raise CsfloatAuthError("CSFloat отклонил API-ключ. Пересоздайте ключ в профиле") from error
         if error.code == 403:
-            raise CsfloatRequestError(
+            raise CsfloatAuthError(
                 "CSFloat требует повторного входа для поиска лотов. "
                 "Войдите в аккаунт и пересоздайте API-ключ"
             ) from error
@@ -96,11 +151,8 @@ def get_lowest_price(market_hash_name: str) -> MarketPrice | None:
 
 
 def get_price_index() -> dict[str, dict[str, int]]:
-    """Return CSFloat's market-wide minimum-price index keyed by market name."""
+    """Return CSFloat's public market-wide minimum-price index."""
     headers = {"Accept": "application/json", "User-Agent": "trueROI/0.3"}
-    api_key = os.getenv("CSFLOAT_API_KEY")
-    if api_key:
-        headers["Authorization"] = api_key
     request = Request(CSFLOAT_PRICE_LIST_URL, headers=headers)
 
     try:
@@ -373,7 +425,7 @@ def get_buy_orders(listing_id: str, *, limit: int = 10) -> list[dict[str, object
 def _authenticated_get(url: str, *, error_message: str):
     api_key = os.getenv("CSFLOAT_API_KEY")
     if not api_key:
-        raise CsfloatRequestError("Не настроен CSFLOAT_API_KEY")
+        raise CsfloatAuthError("Не настроен CSFLOAT_API_KEY")
     request = Request(
         url,
         headers={
@@ -386,9 +438,9 @@ def _authenticated_get(url: str, *, error_message: str):
         return _load_json_with_rate_limit_retry(request, timeout=30)
     except HTTPError as error:
         if error.code == 401:
-            raise CsfloatRequestError("CSFloat отклонил API-ключ. Пересоздайте ключ в профиле") from error
+            raise CsfloatAuthError("CSFloat отклонил API-ключ. Пересоздайте ключ в профиле") from error
         if error.code == 403:
-            raise CsfloatRequestError(
+            raise CsfloatAuthError(
                 "CSFloat требует повторного входа для приватных данных. "
                 "Войдите в аккаунт и пересоздайте API-ключ"
             ) from error

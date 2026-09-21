@@ -1,6 +1,16 @@
+name: true-roi
+
+x-logging: &service-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
+    container_name: true-roi-postgres
     image: postgres:16-alpine
+    logging: *service-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -16,6 +26,7 @@ services:
 
   catalog-seed:
     image: ghcr.io/despa1r0/true-csgo-roi:${IMAGE_TAG}
+    logging: *service-logging
     command: ["python", "-m", "backend.app.seed_catalog"]
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -28,7 +39,9 @@ services:
     restart: "no"
 
   api:
+    container_name: true-roi-api
     image: ghcr.io/despa1r0/true-csgo-roi:${IMAGE_TAG}
+    logging: *service-logging
     environment:
       DATABASE_URL: ${DATABASE_URL}
       CSFLOAT_API_KEY: ${CSFLOAT_API_KEY:-}
@@ -55,7 +68,9 @@ services:
     restart: unless-stopped
 
   csmoney-worker:
+    container_name: true-roi-csmoney-crawler
     image: ghcr.io/despa1r0/true-csgo-roi-csmoney:${IMAGE_TAG}
+    logging: *service-logging
     environment:
       DATABASE_URL: ${DATABASE_URL}
       CSGOMARKET_API_KEY: ${CSGOMARKET_API_KEY:-}
@@ -63,6 +78,7 @@ services:
       CSMONEY_CACHE_TTL_SECONDS: ${CSMONEY_CACHE_TTL_SECONDS:-1800}
       CSMONEY_CRAWL_TTL_SECONDS: ${CSMONEY_CRAWL_TTL_SECONDS:-86400}
       CSMONEY_MIN_REQUEST_INTERVAL_SECONDS: ${CSMONEY_MIN_REQUEST_INTERVAL_SECONDS:-10}
+      CSMONEY_STOREFRONT_RETRY_SECONDS: ${CSMONEY_STOREFRONT_RETRY_SECONDS:-21600}
       CSMONEY_SCHEDULE_INTERVAL_SECONDS: ${CSMONEY_SCHEDULE_INTERVAL_SECONDS:-300}
     depends_on:
       catalog-seed:
@@ -70,7 +86,9 @@ services:
     restart: unless-stopped
 
   csmoney-demand:
+    container_name: true-roi-csmoney-demand
     image: ghcr.io/despa1r0/true-csgo-roi:${IMAGE_TAG}
+    logging: *service-logging
     command: ["python", "-m", "backend.app.csmoney_demand_worker"]
     environment:
       DATABASE_URL: ${DATABASE_URL}

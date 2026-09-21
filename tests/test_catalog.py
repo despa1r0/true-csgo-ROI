@@ -1,6 +1,6 @@
 import pytest
 
-from backend.app.catalog import _search_tokens
+from backend.app.catalog import _search_tokens, search_skins
 from backend.app.main import app
 from backend.app.seed_catalog import (
     _is_marketplace_catalog_item,
@@ -60,6 +60,42 @@ def test_groups_source_variants_under_one_skin():
 
 def test_search_tokens_ignore_item_name_separators():
     assert _search_tokens("  AWP   | As  ") == ["AWP", "As"]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_tokens"),
+    [
+        ("AK-47 | Redline (Field-Tested)", ["AK", "47", "Redline", "Field", "Tested"]),
+        ("StatTrak™ AK-47 | Redline", ["StatTrak™", "AK", "47", "Redline"]),
+    ],
+)
+def test_search_matches_all_variant_name_tokens_in_one_market_name(
+    monkeypatch, query, expected_tokens
+):
+    executed = []
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def execute(self, sql, parameters):
+            executed.append((sql, parameters))
+            return self
+
+        def fetchall(self):
+            return []
+
+    monkeypatch.setattr("backend.app.catalog.get_connection", FakeConnection)
+
+    assert search_skins(query) == []
+    sql, parameters = executed[0]
+    assert "EXISTS (SELECT 1 FROM skin_variants search_variant" in sql
+    assert sql.count("search_variant.market_hash_name ~* %s") == len(expected_tokens)
+    for token in expected_tokens:
+        assert parameters.count(rf"\m{token}") == 2
 
 
 def test_flattens_grouped_skin_collections():

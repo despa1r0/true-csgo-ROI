@@ -136,12 +136,12 @@ def store_variant_capture(variant_id: str, capture: dict[str, Any]) -> int:
                 """
                 INSERT INTO csmoney_variant_state (
                     variant_id, fetched_at, last_attempt_at, page_items, exact_matches,
-                    is_partial, last_error
-                ) VALUES (%s, NULL, NOW(), %s, 0, TRUE, %s)
+                    is_partial, last_error, quote_source
+                ) VALUES (%s, NULL, NOW(), %s, 0, TRUE, %s, NULL)
                 ON CONFLICT (variant_id) DO UPDATE SET
                     fetched_at = NULL, last_attempt_at = NOW(), page_items = EXCLUDED.page_items,
                     exact_matches = 0, is_partial = TRUE,
-                    last_error = EXCLUDED.last_error
+                    last_error = EXCLUDED.last_error, quote_source = NULL
                 """,
                 (variant_id, page_items, "First page has no matching listing; later pages were not checked"),
             )
@@ -223,17 +223,53 @@ def store_variant_capture(variant_id: str, capture: dict[str, Any]) -> int:
             """
             INSERT INTO csmoney_variant_state (
                 variant_id, fetched_at, last_attempt_at, page_items,
-                exact_matches, is_partial, last_error
-            ) VALUES (%s, NOW(), NOW(), %s, %s, %s, NULL)
+                exact_matches, is_partial, last_error, quote_source
+            ) VALUES (%s, NOW(), NOW(), %s, %s, %s, NULL, 'storefront')
             ON CONFLICT (variant_id) DO UPDATE SET
                 fetched_at = NOW(), last_attempt_at = NOW(),
                 page_items = EXCLUDED.page_items,
                 exact_matches = EXCLUDED.exact_matches,
-                is_partial = EXCLUDED.is_partial, last_error = NULL
+                is_partial = EXCLUDED.is_partial, last_error = NULL,
+                quote_source = 'storefront'
             """,
             (variant_id, page_items, int(capture["exact_matches"]), partial),
         )
     return len(listings)
+
+
+def store_wiki_market_summary(variant_id: str, summary: dict[str, int], *, item_url: str) -> None:
+    """Store a current Market minimum without fabricating individual listings."""
+    price_cents = summary["price_cents"]
+    quantity = summary["quantity"]
+    if not isinstance(price_cents, int) or price_cents <= 0 or not isinstance(quantity, int) or quantity < 1:
+        raise ValueError("Invalid CS.MONEY Wiki Market summary")
+    with get_connection() as connection:
+        connection.execute(
+            "DELETE FROM marketplace_active_listings WHERE marketplace = %s AND variant_id = %s",
+            (MARKETPLACE, variant_id),
+        )
+        connection.execute(
+            """INSERT INTO marketplace_listings
+               (marketplace, variant_id, listing_id, price_cents, item_url,
+                float_value, quantity, is_available, fetched_at)
+               VALUES (%s, %s, NULL, %s, %s, NULL, %s, TRUE, NOW())
+               ON CONFLICT (marketplace, variant_id) DO UPDATE SET
+                 listing_id = NULL, price_cents = EXCLUDED.price_cents,
+                 item_url = EXCLUDED.item_url, float_value = NULL,
+                 quantity = EXCLUDED.quantity, is_available = TRUE, fetched_at = NOW()""",
+            (MARKETPLACE, variant_id, price_cents, item_url, quantity),
+        )
+        connection.execute(
+            """INSERT INTO csmoney_variant_state
+               (variant_id, fetched_at, last_attempt_at, page_items,
+                exact_matches, is_partial, last_error, quote_source)
+               VALUES (%s, NOW(), NOW(), 0, 0, TRUE, NULL, 'wiki_market_summary')
+               ON CONFLICT (variant_id) DO UPDATE SET
+                 fetched_at = NOW(), last_attempt_at = NOW(), page_items = 0,
+                 exact_matches = 0, is_partial = TRUE, last_error = NULL,
+                 quote_source = 'wiki_market_summary'""",
+            (variant_id,),
+        )
 
 
 def record_refresh_error(variant_id: str, message: str) -> None:
@@ -258,7 +294,8 @@ def get_csmoney_prices(skin_id: str) -> dict[str, Any]:
             SELECT v.id AS variant_id, v.market_hash_name,
                    p.listing_id, p.price_cents, p.item_url,
                    p.float_value, p.quantity, p.is_available,
-                   st.fetched_at, st.last_attempt_at, st.last_error, st.is_partial
+                   st.fetched_at, st.last_attempt_at, st.last_error, st.is_partial,
+                   st.quote_source
             FROM skin_variants v
             LEFT JOIN marketplace_listings p
               ON p.variant_id = v.id AND p.marketplace = %s
@@ -284,6 +321,8 @@ def get_csmoney_prices(skin_id: str) -> dict[str, Any]:
                 "quantity": row["quantity"],
                 "fetched_at": row["fetched_at"],
                 "stale": False,
+                "source": row["quote_source"] or "storefront",
+                "is_partial": bool(row["is_partial"]),
             }
         results.append({
             "variant_id": row["variant_id"],
@@ -311,9 +350,13 @@ def _skin_context(skin_id: str) -> tuple[dict[str, Any] | None, list[dict[str, A
             """
             SELECT v.id, v.market_hash_name, v.wear_name,
                    v.stattrak, v.souvenir, v.image_url,
-                   st.fetched_at, st.is_partial, st.last_attempt_at, st.last_error
+                   st.fetched_at, st.is_partial, st.last_attempt_at, st.last_error,
+                   st.quote_source, p.price_cents AS summary_price_cents,
+                   p.quantity AS summary_quantity, p.item_url AS summary_item_url
             FROM skin_variants v
             LEFT JOIN csmoney_variant_state st ON st.variant_id = v.id
+            LEFT JOIN marketplace_listings p
+              ON p.variant_id = v.id AND p.marketplace = 'CS.MONEY'
             WHERE v.skin_id = %s AND v.market_hash_name IS NOT NULL
             ORDER BY v.id
             """, (skin_id,)
@@ -406,6 +449,10 @@ def get_csmoney_skin_listings(
         if len(listings) >= limit:
             break
     fetched_dates = [row["fetched_at"] for row in selected if row["fetched_at"]]
+    wiki_summary_only = not listings and any(
+        row["quote_source"] == "wiki_market_summary" and _fresh(row, ttl)
+        for row in selected
+    )
     return {
         "marketplace": MARKETPLACE,
         "sort_by": "lowest_price",
@@ -415,6 +462,7 @@ def get_csmoney_skin_listings(
         "fetched_at": min(fetched_dates) if fetched_dates else None,
         "is_stale": bool(stale_ids),
         "is_partial": any(row["is_partial"] is not False for row in selected),
+        "quote_source": "wiki_market_summary" if wiki_summary_only else "storefront",
         "refresh_queued": bool(queue_ids),
     }
 
@@ -431,14 +479,21 @@ def get_csmoney_variant_details(variant_id: str) -> dict[str, Any] | None:
     listings = [row for row in result["listings"] if row["variant_id"] == variant_id]
     if len(listings) > MAX_LISTINGS_PER_VARIANT:
         listings = listings[:MAX_LISTINGS_PER_VARIANT]
+    _skin, variants = _skin_context(context["skin_id"])
+    state = next((row for row in variants if row["id"] == variant_id), None)
+    wiki_summary = bool(state and state["quote_source"] == "wiki_market_summary"
+                        and _fresh(state, cache_ttl_seconds()))
     return {
         "marketplace": MARKETPLACE_ID,
         "variant_id": variant_id,
         "market_hash_name": context["market_hash_name"],
         "overview": {
-            "price_cents": listings[0]["price_cents"] if listings else None,
-            "active_listings": len(listings),
-            "item_url": listings[0]["item_url"] if listings else None,
+            "price_cents": listings[0]["price_cents"] if listings else (
+                state["summary_price_cents"] if wiki_summary else None),
+            "active_listings": len(listings) if listings else (
+                state["summary_quantity"] if wiki_summary else 0),
+            "item_url": listings[0]["item_url"] if listings else (
+                state["summary_item_url"] if wiki_summary else None),
         },
         "stats": {"sales_count": None, "sales_per_day": None, "liquidity_score": None},
         "listings": listings,
@@ -447,6 +502,7 @@ def get_csmoney_variant_details(variant_id: str) -> dict[str, Any] | None:
         "cached": True,
         "stale": result["is_stale"],
         "is_partial": result["is_partial"],
+        "quote_source": "wiki_market_summary" if wiki_summary else "storefront",
         "refresh_queued": result["refresh_queued"],
         "listings_error": result["error"],
         "sales_error": "CS.MONEY does not provide sales history",

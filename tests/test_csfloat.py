@@ -155,8 +155,104 @@ def test_loads_market_wide_price_index(monkeypatch):
         }
     }
     assert captured["request"].full_url.endswith("/listings/price-list")
-    assert captured["request"].get_header("Authorization") == "test-key"
+    assert captured["request"].get_header("Authorization") is None
     assert captured["timeout"] == 30
+
+
+def test_auth_probe_rejects_bad_key_and_caches_failure(monkeypatch):
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        raise HTTPError(request.full_url, 403, "Forbidden", {}, BytesIO(b""))
+
+    monkeypatch.setenv("CSFLOAT_API_KEY", "invalid-test-key")
+    monkeypatch.setattr(csfloat, "urlopen", fake_urlopen)
+    monkeypatch.setattr(csfloat, "_auth_check_key", None)
+    monkeypatch.setattr(csfloat, "_auth_check_at", 0.0)
+
+    for _ in range(2):
+        with pytest.raises(csfloat.CsfloatAuthError):
+            csfloat.validate_api_key()
+
+    assert len(requests) == 1
+    assert requests[0].full_url.endswith("/listings?limit=1")
+    assert requests[0].get_header("Authorization") == "invalid-test-key"
+
+
+def test_auth_probe_accepts_authenticated_listings_response(monkeypatch):
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        return FakeResponse([])
+
+    monkeypatch.setenv("CSFLOAT_API_KEY", "valid-test-key")
+    monkeypatch.setattr(csfloat, "urlopen", fake_urlopen)
+    monkeypatch.setattr(csfloat, "_auth_check_key", None)
+    monkeypatch.setattr(csfloat, "_auth_check_at", 0.0)
+
+    csfloat.validate_api_key()
+    csfloat.validate_api_key()
+
+    assert len(requests) == 1
+
+
+def test_price_response_reports_bad_key_without_hiding_public_quote(monkeypatch):
+    def rejected():
+        raise csfloat.CsfloatAuthError("CSFloat отклонил API-ключ")
+
+    monkeypatch.setattr(market_data, "validate_api_key", rejected)
+    monkeypatch.setattr(
+        market_data,
+        "_load_skin_cache",
+        lambda *_args: (
+            [{"id": "variant-1", "market_hash_name": "AK-47 | Redline (Field-Tested)"}],
+            {"variant-1": {
+                "is_available": True,
+                "price_cents": 2000,
+                "item_url": "https://csfloat.com/search",
+                "listing_id": None,
+                "fetched_at": datetime.now(timezone.utc),
+            }},
+            True,
+        ),
+    )
+
+    result = market_data.get_csfloat_prices("skin-1")
+
+    assert result["provider_auth_status"] == "auth_failed"
+    assert result["variants"][0]["listing"]["price_cents"] == 2000
+    assert result["variants"][0]["listing"]["stale"] is False
+    assert "отклонил API-ключ" in result["variants"][0]["error"]
+
+
+def test_partial_market_failure_only_marks_expired_cached_quote_stale():
+    variants = [
+        {"id": "fresh", "market_hash_name": "Fresh"},
+        {"id": "expired", "market_hash_name": "Expired"},
+    ]
+    rows = {
+        "fresh": {
+            "is_available": True, "price_cents": 1000, "is_fresh": True,
+            "item_url": "https://example.test/fresh",
+        },
+        "expired": {
+            "is_available": True, "price_cents": 1200, "is_fresh": False,
+            "item_url": "https://example.test/expired",
+        },
+    }
+
+    result = market_data._response(
+        "WhiteMarket", variants, rows, 300,
+        cached=True, stale=True, error="fetch failed",
+    )
+
+    fresh, expired = result["variants"]
+    assert fresh["listing"]["stale"] is False
+    assert expired["listing"]["stale"] is True
+    assert "сохранённая цена" not in fresh["error"]
+    assert "сохранённая цена" in expired["error"]
 
 
 def test_normalizes_detailed_active_listings(monkeypatch):

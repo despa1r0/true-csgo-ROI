@@ -131,12 +131,13 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                 return <section className={styles.marketplaceListingGroup} key={marketplace.id} aria-labelledby={`market-listings-${marketplace.id}`}>
                   <header><div><span className={styles.marketplaceChip}>{marketplace.display_name}</span><h3 id={`market-listings-${marketplace.id}`}>{t("listings.marketHeading", { market: marketplace.display_name })}</h3></div><strong>{t("listings.count", { count: query?.data?.listings.length ?? 0 })}</strong></header>
                   {query?.data && <ListingSnapshotStatus snapshot={query.data} locale={locale} />}
+                  {query?.data?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
                   {unsupportedFilters.length > 0 && <MarketplaceListingState title={t("listings.filterUnsupportedTitle")} detail={t("listings.filterUnsupportedMarket", { market: marketplace.display_name, filters: unsupportedFilters.map((filter) => t(`listings.${filter}`)).join(", ") })} />}
                   {query?.isLoading && <MarketplaceListingState title={t("common.loading")} />}
                   {query?.isError && <MarketplaceListingState title={t("listings.providerError", { market: marketplace.display_name })} detail={t("listings.providerErrorHint")} onRetry={() => void query.refetch()} />}
                   {paintIndexUnavailable && <MarketplaceListingState title={t("listings.paintIndexUnavailableTitle")} detail={t("listings.paintIndexUnavailable", { market: marketplace.display_name })} />}
                   {!paintIndexUnavailable && query?.data?.error && <MarketplaceListingState title={t("listings.providerError", { market: marketplace.display_name })} detail={t("listings.providerErrorHint")} onRetry={() => void query.refetch()} />}
-                  {!query?.isLoading && !query?.isError && !query?.data?.error && !query?.data?.refresh_queued && unsupportedFilters.length === 0 && query?.data?.listings.length === 0 && <MarketplaceListingState title={t("listings.none")} detail={t("listings.noneOnMarket", { market: marketplace.display_name })} />}
+                  {!query?.isLoading && !query?.isError && !query?.data?.error && !query?.data?.refresh_queued && query?.data?.quote_source !== "wiki_market_summary" && unsupportedFilters.length === 0 && query?.data?.listings.length === 0 && <MarketplaceListingState title={t("listings.none")} detail={t("listings.noneOnMarket", { market: marketplace.display_name })} />}
                   {query?.data?.listings.length ? <div className={styles.listingGrid}>{query.data.listings.map((listing, index) => <ListingCard key={`${marketplace.id}-${listing.listing_id ?? listing.variant_id}-${index}`} listing={{ ...listing, marketplace_id: listing.marketplace_id ?? marketplace.id }} marketplaceName={marketplace.display_name} fallbackImage={skin.image_url} locale={locale} onClick={() => openDetail(listing, marketplace.id, query.data)} />)}</div> : null}
                 </section>;
               })}</div>
@@ -157,6 +158,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
               <main className={styles.analyticsPane}>
                 <header className={styles.analyticsHeader}><div><span>{t("analytics.title")}</span><h2>{selectedListing.market_hash_name}</h2></div><div className={styles.marketTabs}>{analyticsMarkets.map((item) => <button className={analyticsMarket === item.id ? styles.activeChip : ""} type="button" key={item.id} onClick={() => setAnalyticsMarket(item.id)}>{item.display_name}</button>)}</div></header>
                 {selectedDetails && <ListingSnapshotStatus snapshot={selectedDetails} locale={locale} />}
+                {selectedDetails?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
                 <nav className={styles.analyticsTabs} role="tablist">{(["history", "active", "quick", "compare"] as Tab[]).map((item) => <button role="tab" aria-selected={tab === item} className={tab === item ? styles.activeTab : ""} type="button" key={item} onClick={() => setTab(item)}>{t(item === "history" && analyticsMarket === "csmoney" ? "analytics.wikiTradePriceHistory" : `analytics.${item}`)}</button>)}</nav>
                 {detailQueries.some((item) => item.isLoading) && !selectedDetails && <div className={styles.emptyState}>{t("common.loading")}</div>}
                 {tab === "history" && <section className={styles.analyticsSection}>
@@ -204,12 +206,12 @@ function MarketplaceListingState({ title, detail, onRetry }: { title: string; de
   return <div className={styles.marketplaceState} role="status"><strong>{title}</strong>{detail && <p>{detail}</p>}{onRetry && <button type="button" onClick={onRetry}>{t("common.retry")}</button>}</div>;
 }
 
-function ListingSnapshotStatus({ snapshot, locale }: { snapshot: Pick<ListingsResponse, "fetched_at" | "stale" | "is_stale" | "is_partial" | "refresh_queued">; locale: string }) {
+function ListingSnapshotStatus({ snapshot, locale }: { snapshot: Pick<ListingsResponse, "fetched_at" | "stale" | "is_stale" | "is_partial" | "refresh_queued" | "quote_source">; locale: string }) {
   const { t } = useTranslation();
   const labels = [
     snapshot.fetched_at && t("listings.snapshotUpdated", { date: formatDate(snapshot.fetched_at, locale) }),
     (snapshot.is_stale ?? snapshot.stale) && t("listings.snapshotStale"),
-    snapshot.is_partial && t("listings.snapshotPartial"),
+    snapshot.is_partial && snapshot.quote_source !== "wiki_market_summary" && t("listings.snapshotPartial"),
     snapshot.refresh_queued && t("listings.snapshotQueued"),
   ].filter(Boolean);
   return labels.length ? <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p> : null;
@@ -297,11 +299,18 @@ function ComparePanel({ marketplaces, details, comparison, selectedListing, sele
     </div>
     <div className={styles.metricGrid}><Metric label={`${t("analytics.buy")} · ask`} value={formatUsd(buyQuote, locale)} /><Metric label={effectiveSellMode === "fast_buy" ? `${t("analytics.sell")} · bid` : `${t("analytics.sell")} · ask`} value={formatUsd(sellQuote, locale)} /><Metric label={t("analytics.bidDepth")} value={String(details.get(sell)?.quick_sell?.near_bid_depth ?? "—")} /><Metric label={t("analytics.netProfit")} value={formatUsd(result?.profit_cents, locale)} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /><Metric label={t("analytics.roi")} value={result ? (result.effective_buy_cents === 0 ? "—" : `${result.cash_roi_percent}%`) : "—"} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /></div>
     <FlipRiskNotice level={riskLevel} score={sellScore} cashRoiPercent={result?.cash_roi_percent} />
+    {(comparison?.markets[buy]?.source === "wiki_market_summary" || comparison?.markets[sell]?.source === "wiki_market_summary") && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
     {result?.applied_fees && <div className={styles.feeBreakdown}><Metric label={t("calculator.depositFee")} value={formatUsd(result.deposit_fee_cents, locale)} /><Metric label={t("calculator.sellFee")} value={formatUsd(result.sell_fee_cents, locale)} /><Metric label={t("calculator.withdrawFee")} value={formatUsd(result.withdraw_fee_cents, locale)} /></div>}
     {!supportsSelectedSale && <p className={styles.sourceNote}>{t("analytics.quickUnavailable")}</p>}
     {calculationQuery.isError && <p className={styles.sourceNote}>{t("calculator.serverError")}</p>}
     <p className={styles.sourceNote}>{status}</p>
   </section>;
+}
+
+function wikiMarketSummaryNote(locale: string) {
+  return locale === "ru-RU"
+    ? "CS.MONEY: минимальная цена и число предложений взяты из Wiki Market. Отдельные лоты сейчас недоступны; проверьте цену на площадке перед сделкой."
+    : "CS.MONEY: minimum price and offer count come from Wiki Market. Individual listings are currently unavailable; check the marketplace price before trading.";
 }
 
 function ComparisonPreview({ title, marketplace, listing, fallbackImage, price, locale }: { title: string; marketplace: string; listing?: Listing; fallbackImage?: string | null; price?: number | null; locale: string }) {

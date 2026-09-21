@@ -16,10 +16,12 @@ from .csmoney_data import (
     load_variant_context,
     record_refresh_error,
     store_variant_capture,
+    store_wiki_market_summary,
 )
 from .csmoney_demand import get_observed_sales_priorities
+from .csmoney_wiki import WikiPriceError, fetch_market_summary
 from .database import ensure_schema, get_connection
-from .marketplaces.csmoney import CsMoneyRequestError, capture_variant
+from .marketplaces.csmoney import CsMoneyRequestError, capture_variant, storefront_url
 
 
 LOG = logging.getLogger(__name__)
@@ -84,6 +86,16 @@ def schedule_candidates(*, batch_size: int = 30) -> int:
     return added
 
 
+def _wiki_summary(variant_id: str, context: dict) -> None:
+    summary = fetch_market_summary(context["item_name"], context["market_hash_name"])
+    store_wiki_market_summary(
+        variant_id, summary, item_url=storefront_url(context["market_hash_name"]),
+    )
+    complete_refresh_job(variant_id)
+    LOG.debug("CS.MONEY %s: Wiki Market minimum $%.2f, count=%d, partial=true",
+              variant_id, summary["price_cents"] / 100, summary["quantity"])
+
+
 def process_one(page) -> bool:
     """Process one leased job; return false when there was no ready job."""
     job = claim_refresh_job()
@@ -94,6 +106,14 @@ def process_one(page) -> bool:
     if context is None:
         complete_refresh_job(variant_id)
         return True
+    if page is None:
+        try:
+            _wiki_summary(variant_id, context)
+        except (WikiPriceError, OSError, TimeoutError, ValueError) as error:
+            record_refresh_error(variant_id, f"Wiki Market summary unavailable: {error}")
+            defer_refresh_job(variant_id, seconds=21600)
+            LOG.debug("CS.MONEY %s: Wiki Market summary unavailable: %s", variant_id, error)
+        return True
     try:
         capture = capture_variant(
             page,
@@ -103,14 +123,19 @@ def process_one(page) -> bool:
         stored = store_variant_capture(variant_id, capture)
     except CsMoneyRequestError as error:
         message = str(error)
+        if "403" in message:
+            # Stop storefront requests globally while using the separate
+            # public Wiki Market summary. One 403 is enough to trip the gate.
+            try:
+                _wiki_summary(variant_id, context)
+            except (WikiPriceError, OSError, TimeoutError, ValueError) as wiki_error:
+                record_refresh_error(variant_id, f"Storefront 403; Wiki unavailable: {wiki_error}")
+                defer_refresh_job(variant_id, seconds=21600)
+            raise
         record_refresh_error(variant_id, message)
-        retry_seconds = 1800 if "403" in message else min(900, 60 * job["attempts"])
+        retry_seconds = min(900, 60 * job["attempts"])
         defer_refresh_job(variant_id, seconds=retry_seconds)
         LOG.warning("CS.MONEY %s: %s; retry in %ds", variant_id, message, retry_seconds)
-        if "403" in message:
-            # The storefront has requested a security check. Stop this worker
-            # session instead of continuing requests against that response.
-            raise
     except Exception:
         record_refresh_error(variant_id, "Collector failed; inspect worker logs")
         defer_refresh_job(variant_id, seconds=min(900, 60 * job["attempts"]))
@@ -132,9 +157,28 @@ def run(*, once: bool = False) -> None:
         ensure_schema(connection)
     request_interval = _positive_env("CSMONEY_MIN_REQUEST_INTERVAL_SECONDS", 10)
     schedule_interval = _positive_env("CSMONEY_SCHEDULE_INTERVAL_SECONDS", 300)
+    storefront_retry = _positive_env("CSMONEY_STOREFRONT_RETRY_SECONDS", 21600)
     next_schedule = 0.0
     last_request = 0.0
+    blocked_until = 0.0
     while True:
+        if time.monotonic() < blocked_until:
+            now = time.monotonic()
+            if now >= next_schedule:
+                scheduled = schedule_candidates()
+                LOG.info("CS.MONEY scheduled %d candidate jobs", scheduled)
+                next_schedule = now + schedule_interval
+            remaining = request_interval - (time.monotonic() - last_request)
+            if last_request and remaining > 0:
+                time.sleep(remaining)
+            processed = process_one(None)
+            if processed:
+                last_request = time.monotonic()
+            if once:
+                return
+            if not processed:
+                time.sleep(5)
+            continue
         challenged = False
         with Camoufox(headless=True) as browser:
             page = browser.new_page()
@@ -161,8 +205,9 @@ def run(*, once: bool = False) -> None:
         if once:
             return
         if challenged:
-            LOG.warning("CS.MONEY returned a security challenge; pause 15 minutes")
-            time.sleep(900)
+            blocked_until = time.monotonic() + storefront_retry
+            LOG.warning("CS.MONEY storefront returned 403; using Wiki Market summaries for %ds",
+                        storefront_retry)
 
 
 def main() -> None:

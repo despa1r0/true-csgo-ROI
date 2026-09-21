@@ -6,7 +6,7 @@
 - FastAPI
 - PostgreSQL 16
 - Psycopg 3
-- Pytest
+- Pytest (только development/test requirements)
 - Docker Compose
 
 Каталог разделён на базовые модели `skins`, продаваемые варианты `skin_variants` и связи `skin_collections`. Исходные записи CSGO-API сохраняются в JSONB. Для поиска по частичному названию используется PostgreSQL `pg_trgm`. Рыночные индексы и подробные снимки адаптеров хранятся в общих таблицах `marketplace_listings`, `marketplace_syncs` и `marketplace_variant_details` с разделением по полю `marketplace`.
@@ -24,9 +24,8 @@ Production-frontend расположен в `frontend-react`:
 - i18next/react-i18next;
 - Radix UI Dialog;
 - Apache ECharts 6;
-- Motion;
 - CSS Modules и CSS custom properties;
-- Vitest, Testing Library, jsdom и MSW.
+- Vitest и jsdom для модульных тестов и проверки API-клиента.
 
 Маршрут `/` содержит каталог, сравнение и модальную аналитику; `/calculator` — ручной калькулятор профита. UI доступен на русском и английском. Серверное состояние кэшируется TanStack Query, а доступность функций площадок определяется динамическими capabilities из `/api/marketplaces`.
 
@@ -38,6 +37,6 @@ Production-frontend расположен в `frontend-react`:
 
 Корневой Dockerfile использует multi-stage build. Node 22 выполняет `npm ci` и `npm run build` в `frontend-react`, затем собранный `dist` копируется в Python 3.13 образ и раздаётся FastAPI. UI и API работают на одном origin.
 
-Основной сценарий: ввод названия или выбор коллекции → выбор скина → выбор режима Raw/Smart/Enhanced/Quick flip, направления покупки/продажи и способов пополнения/вывода → сравнение цен и ROI на карточках FN/MW/FT/WW/BS → выбор площадки и модальный список её лотов → аналитика доступных площадок. Quick flip лениво загружает лучший bid; приватный Market.CSGO API защищён общим thread-safe limiter с безопасным потолком четыре запроса в секунду.
+Основной сценарий: ввод названия или выбор коллекции → выбор скина → выбор режима Raw/Smart/Enhanced/Quick flip, направления покупки/продажи и способов пополнения/вывода → сравнение цен и ROI на карточках FN/MW/FT/WW/BS → выбор площадки и модальный список её лотов → аналитика доступных площадок. Quick flip лениво загружает лучший bid; приватный Market.CSGO API защищён общим thread-safe limiter с безопасным потолком 0,5 запроса в секунду (30 в минуту).
 
 Подробнее: [`docs/FRONTEND.md`](docs/FRONTEND.md).

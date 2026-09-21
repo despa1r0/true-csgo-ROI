@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -8,32 +9,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .catalog import catalogue_size, get_catalog_filters, get_skin, search_skins
-from .csmoney_data import (
-    get_csmoney_prices,
-    get_csmoney_skin_listings,
-    get_csmoney_variant_details,
-)
-from .csmoney_wiki import get_variant_price_history
-from .csgomarket_data import (
-    get_csgomarket_prices,
-    get_csgomarket_skin_listings,
-    get_csgomarket_variant_details,
-)
 from .market_comparison import get_skin_market_comparison
-from .market_data import (
-    get_csfloat_prices,
-    get_csfloat_listing_quick_sell,
-    get_csfloat_skin_listings,
-    get_csfloat_variant_details,
-    get_whitemarket_prices,
-    get_whitemarket_skin_listings,
-    get_whitemarket_variant_details,
-    get_whitemarket_variant_listings,
-    get_whitemarket_variant_quick_sell,
-)
 from .marketplaces_fees import FEE_CONFIGURATION_VERSION, MARKETPLACES, FeeRule
 from .models import AppliedFee, AppliedFees, CalculationRequest, CatalogueSearchResult
 from .profit import calculate_fee, calculate_profit
+from .routers.csmoney import router as csmoney_router
+from .routers.csgomarket import router as csgomarket_router
+from .routers.csfloat import router as csfloat_router
+from .routers.whitemarket import router as whitemarket_router
 
 load_dotenv()
 app = FastAPI(title="trueROI API", version="1.0.0")
@@ -44,6 +27,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(csfloat_router)
+app.include_router(csgomarket_router)
+app.include_router(whitemarket_router)
+app.include_router(csmoney_router)
 
 
 @app.get("/api/health")
@@ -103,112 +90,6 @@ def skin_details(skin_id: str):
     return skin
 
 
-@app.get("/api/skins/{skin_id}/market/csfloat")
-def skin_csfloat_prices(skin_id: str):
-    if get_skin(skin_id) is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return get_csfloat_prices(skin_id)
-
-
-@app.get("/api/skins/{skin_id}/market/whitemarket")
-def skin_whitemarket_prices(skin_id: str):
-    if get_skin(skin_id) is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return get_whitemarket_prices(skin_id)
-
-
-@app.get("/api/skins/{skin_id}/market/csmoney")
-def skin_csmoney_prices(skin_id: str):
-    if get_skin(skin_id) is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return get_csmoney_prices(skin_id)
-
-
-@app.get("/api/skins/{skin_id}/market/csmoney/listings")
-def skin_csmoney_listings(
-    skin_id: str,
-    sort_by: Literal["best_deal", "lowest_price"] = "lowest_price",
-    wear: Literal[
-        "factory-new", "minimal-wear", "field-tested", "well-worn", "battle-scarred"
-    ] | None = None,
-    variant: Literal["any", "normal", "stattrak", "souvenir"] = "any",
-    min_float: float | None = Query(default=None, ge=0, le=1),
-    max_float: float | None = Query(default=None, ge=0, le=1),
-    min_price_cents: int | None = Query(default=None, ge=0),
-    max_price_cents: int | None = Query(default=None, ge=0),
-    has_stickers: bool = False,
-    has_charm: bool = False,
-    limit: int = Query(default=30, ge=1, le=50),
-):
-    if min_float is not None and max_float is not None and min_float > max_float:
-        raise HTTPException(status_code=422, detail="Минимальный float больше максимального")
-    if min_price_cents is not None and max_price_cents is not None and min_price_cents > max_price_cents:
-        raise HTTPException(status_code=422, detail="Минимальная цена больше максимальной")
-    result = get_csmoney_skin_listings(
-        skin_id, sort_by=sort_by, wear=wear, variant=variant,
-        min_float=min_float, max_float=max_float,
-        min_price_cents=min_price_cents, max_price_cents=max_price_cents,
-        has_stickers=has_stickers, has_charm=has_charm, limit=limit,
-    )
-    if result is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return result
-
-
-@app.get("/api/skins/{skin_id}/market/whitemarket/listings")
-def skin_whitemarket_listings(
-    skin_id: str,
-    sort_by: Literal["best_deal", "lowest_price"] = "lowest_price",
-    wear: Literal[
-        "factory-new",
-        "minimal-wear",
-        "field-tested",
-        "well-worn",
-        "battle-scarred",
-    ]
-    | None = None,
-    variant: Literal["any", "normal", "stattrak", "souvenir"] = "any",
-    min_float: float | None = Query(default=None, ge=0, le=1),
-    max_float: float | None = Query(default=None, ge=0, le=1),
-    min_price_cents: int | None = Query(default=None, ge=0),
-    max_price_cents: int | None = Query(default=None, ge=0),
-    has_stickers: bool = False,
-    has_charm: bool = False,
-    limit: int = Query(default=30, ge=1, le=50),
-):
-    if min_float is not None and max_float is not None and min_float > max_float:
-        raise HTTPException(status_code=422, detail="Минимальный float больше максимального")
-    if (
-        min_price_cents is not None
-        and max_price_cents is not None
-        and min_price_cents > max_price_cents
-    ):
-        raise HTTPException(status_code=422, detail="Минимальная цена больше максимальной")
-    result = get_whitemarket_skin_listings(
-        skin_id,
-        sort_by=sort_by,
-        wear=wear,
-        variant=variant,
-        min_float=min_float,
-        max_float=max_float,
-        min_price_cents=min_price_cents,
-        max_price_cents=max_price_cents,
-        has_stickers=has_stickers,
-        has_charm=has_charm,
-        limit=limit,
-    )
-    if result is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return result
-
-
-@app.get("/api/skins/{skin_id}/market/csgomarket")
-def skin_csgomarket_prices(skin_id: str):
-    if get_skin(skin_id) is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return get_csgomarket_prices(skin_id)
-
-
 @app.get("/api/skins/{skin_id}/markets/compare")
 def skin_market_comparison(
     skin_id: str,
@@ -226,190 +107,6 @@ def skin_market_comparison(
         use_deposit_fee=use_deposit_fee,
         profit_mode=profit_mode,
     )
-
-
-@app.get("/api/skins/{skin_id}/market/csgomarket/listings")
-def skin_csgomarket_listings(
-    skin_id: str,
-    sort_by: Literal["best_deal", "lowest_price"] = "lowest_price",
-    wear: Literal[
-        "factory-new",
-        "minimal-wear",
-        "field-tested",
-        "well-worn",
-        "battle-scarred",
-    ]
-    | None = None,
-    variant: Literal["any", "normal", "stattrak", "souvenir"] = "any",
-    min_float: float | None = Query(default=None, ge=0, le=1),
-    max_float: float | None = Query(default=None, ge=0, le=1),
-    min_price_cents: int | None = Query(default=None, ge=0),
-    max_price_cents: int | None = Query(default=None, ge=0),
-    has_stickers: bool = False,
-    has_charm: bool = False,
-    limit: int = Query(default=30, ge=1, le=50),
-):
-    if min_float is not None and max_float is not None and min_float > max_float:
-        raise HTTPException(status_code=422, detail="Минимальный float больше максимального")
-    if (
-        min_price_cents is not None
-        and max_price_cents is not None
-        and min_price_cents > max_price_cents
-    ):
-        raise HTTPException(status_code=422, detail="Минимальная цена больше максимальной")
-    result = get_csgomarket_skin_listings(
-        skin_id,
-        sort_by=sort_by,
-        wear=wear,
-        variant=variant,
-        min_float=min_float,
-        max_float=max_float,
-        min_price_cents=min_price_cents,
-        max_price_cents=max_price_cents,
-        has_stickers=has_stickers,
-        has_charm=has_charm,
-        limit=limit,
-    )
-    if result is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return result
-
-
-@app.get("/api/skins/{skin_id}/market/csfloat/listings")
-def skin_csfloat_listings(
-    skin_id: str,
-    sort_by: Literal["best_deal", "lowest_price"] = "best_deal",
-    wear: Literal[
-        "factory-new",
-        "minimal-wear",
-        "field-tested",
-        "well-worn",
-        "battle-scarred",
-    ]
-    | None = None,
-    variant: Literal["any", "normal", "stattrak", "souvenir"] = "any",
-    min_float: float | None = Query(default=None, ge=0, le=1),
-    max_float: float | None = Query(default=None, ge=0, le=1),
-    min_price_cents: int | None = Query(default=None, ge=0),
-    max_price_cents: int | None = Query(default=None, ge=0),
-    has_stickers: bool = False,
-    has_charm: bool = False,
-    limit: int = Query(default=30, ge=1, le=50),
-):
-    if min_float is not None and max_float is not None and min_float > max_float:
-        raise HTTPException(status_code=422, detail="Минимальный float больше максимального")
-    if (
-        min_price_cents is not None
-        and max_price_cents is not None
-        and min_price_cents > max_price_cents
-    ):
-        raise HTTPException(status_code=422, detail="Минимальная цена больше максимальной")
-    result = get_csfloat_skin_listings(
-        skin_id,
-        sort_by=sort_by,
-        wear=wear,
-        variant=variant,
-        min_float=min_float,
-        max_float=max_float,
-        min_price_cents=min_price_cents,
-        max_price_cents=max_price_cents,
-        has_stickers=has_stickers,
-        has_charm=has_charm,
-        limit=limit,
-    )
-    if result is None:
-        raise HTTPException(status_code=404, detail="Скин не найден")
-    return result
-
-
-@app.get("/api/variants/{variant_id}/market/csfloat")
-def variant_csfloat_details(variant_id: str):
-    details = get_csfloat_variant_details(variant_id)
-    if details is None:
-        raise HTTPException(status_code=404, detail="Вариант скина не найден")
-    return details
-
-
-@app.get("/api/variants/{variant_id}/market/csmoney")
-def variant_csmoney_details(variant_id: str):
-    details = get_csmoney_variant_details(variant_id)
-    if details is None:
-        raise HTTPException(status_code=404, detail="Вариант скина не найден")
-    return details
-
-
-@app.get("/api/variants/{variant_id}/market/csmoney/price-history")
-def variant_csmoney_price_history(variant_id: str):
-    result = get_variant_price_history(variant_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Вариант скина не найден")
-    return result
-
-
-@app.get("/api/variants/{variant_id}/market/whitemarket")
-def variant_whitemarket_details(variant_id: str):
-    details = get_whitemarket_variant_details(variant_id)
-    if details is None:
-        raise HTTPException(status_code=404, detail="Вариант скина не найден")
-    return details
-
-
-@app.get("/api/variants/{variant_id}/market/whitemarket/listings")
-def variant_whitemarket_listings(
-    variant_id: str,
-    min_float: float | None = Query(default=None, ge=0, le=1),
-    max_float: float | None = Query(default=None, ge=0, le=1),
-    min_price_cents: int | None = Query(default=None, ge=0),
-    max_price_cents: int | None = Query(default=None, ge=0),
-    has_stickers: bool = False,
-    has_charm: bool = False,
-    limit: int = Query(default=30, ge=1, le=50),
-):
-    if min_float is not None and max_float is not None and min_float > max_float:
-        raise HTTPException(status_code=422, detail="Минимальный float больше максимального")
-    if (
-        min_price_cents is not None
-        and max_price_cents is not None
-        and min_price_cents > max_price_cents
-    ):
-        raise HTTPException(status_code=422, detail="Минимальная цена больше максимальной")
-    result = get_whitemarket_variant_listings(
-        variant_id,
-        min_float=min_float,
-        max_float=max_float,
-        min_price_cents=min_price_cents,
-        max_price_cents=max_price_cents,
-        has_stickers=has_stickers,
-        has_charm=has_charm,
-        limit=limit,
-    )
-    if result is None:
-        raise HTTPException(status_code=404, detail="Вариант скина не найден")
-    return result
-
-
-@app.get("/api/variants/{variant_id}/market/whitemarket/quick-sell")
-def variant_whitemarket_quick_sell(variant_id: str):
-    result = get_whitemarket_variant_quick_sell(variant_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Вариант скина не найден")
-    return result
-
-
-@app.get("/api/variants/{variant_id}/market/csgomarket")
-def variant_csgomarket_details(variant_id: str):
-    details = get_csgomarket_variant_details(variant_id)
-    if details is None:
-        raise HTTPException(status_code=404, detail="Вариант скина не найден")
-    return details
-
-
-@app.get("/api/listings/{listing_id}/market/csfloat/quick-sell")
-def listing_csfloat_quick_sell(listing_id: str):
-    result = get_csfloat_listing_quick_sell(listing_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Лот CSFloat не найден")
-    return result
 
 
 @app.get("/api/market-overview")
@@ -635,5 +332,33 @@ class SPAStaticFiles(StaticFiles):
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 REACT_DIST_DIR = PROJECT_DIR / "frontend-react" / "dist"
-FRONTEND_DIR = REACT_DIST_DIR if REACT_DIST_DIR.exists() else PROJECT_DIR / "frontend"
-app.mount("/", SPAStaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+FRONTEND_MODE = os.getenv("TRUE_ROI_FRONTEND_MODE", "development").strip().lower()
+
+
+def resolve_frontend_directory(
+    mode: str,
+    *,
+    project_dir: Path = PROJECT_DIR,
+) -> Path | None:
+    """Resolve the React bundle without ever falling back to the legacy UI."""
+    if mode == "development":
+        return None
+    if mode != "static":
+        raise RuntimeError(
+            "TRUE_ROI_FRONTEND_MODE must be either 'development' or 'static'"
+        )
+
+    react_dist_dir = project_dir / "frontend-react" / "dist"
+    if not (react_dist_dir / "index.html").is_file():
+        raise RuntimeError(
+            "React production bundle is missing: expected "
+            f"{react_dist_dir / 'index.html'}. Run `npm ci` and `npm run build` "
+            "in frontend-react, or use TRUE_ROI_FRONTEND_MODE=development with "
+            "the Vite dev server."
+        )
+    return react_dist_dir
+
+
+FRONTEND_DIR = resolve_frontend_directory(FRONTEND_MODE)
+if FRONTEND_DIR is not None:
+    app.mount("/", SPAStaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

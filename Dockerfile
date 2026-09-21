@@ -10,7 +10,8 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    TRUE_ROI_FRONTEND_MODE=static
 
 WORKDIR /app
 
@@ -18,7 +19,7 @@ COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend /app/backend
-COPY --from=frontend-build /frontend/dist /app/frontend
+COPY --from=frontend-build /frontend/dist /app/frontend-react/dist
 
 EXPOSE 8000
 

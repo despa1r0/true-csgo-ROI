@@ -1,6 +1,5 @@
 fastapi
 pydantic
 uvicorn[standard]
-pytest
 python-dotenv
 psycopg[binary]>=3.2,<4

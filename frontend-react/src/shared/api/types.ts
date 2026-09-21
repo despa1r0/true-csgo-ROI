@@ -201,6 +201,12 @@ export type BuyOrder = {
   min_float?: number | null;
   max_float?: number | null;
 };
+export type DetailComponentName = "listings" | "sales" | "buy_orders";
+export type DetailComponentState = {
+  status: "fresh" | "stale" | "unavailable";
+  fetched_at?: string | null;
+  error?: string | null;
+};
 export type MarketplaceDetails = {
   marketplace: MarketplaceId;
   variant_id: string;
@@ -229,6 +235,8 @@ export type MarketplaceDetails = {
   sales?: Sale[];
   listings_error?: string | null;
   sales_error?: string | null;
+  buy_orders_error?: string | null;
+  components?: Partial<Record<DetailComponentName, DetailComponentState>>;
   fetched_at?: string | null;
   cached?: boolean;
   stale?: boolean;

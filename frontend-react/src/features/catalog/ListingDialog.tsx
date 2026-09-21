@@ -1,12 +1,11 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { api, type Listing, type ListingFilters, type ListingsResponse, type MarketplaceDetails, type MarketplaceOption, type ProfitMode, type Sale, type SellMode, type SkinDetails, type SkinQuality, type VariantComparison, type VariantKind } from "@/shared/api";
+import { api, type DetailComponentName, type Listing, type ListingFilters, type ListingsResponse, type MarketplaceDetails, type MarketplaceOption, type ProfitMode, type Sale, type SellMode, type SkinDetails, type SkinQuality, type VariantComparison, type VariantKind } from "@/shared/api";
 import { formatDate, formatNumber, formatUsd } from "@/shared/lib/format";
 import type { HistoryPeriod } from "@/features/analytics/SalesChart";
 import styles from "./market.module.css";
@@ -19,6 +18,16 @@ const PriceHistoryChart = lazy(() => import("@/features/analytics/PriceHistoryCh
 const wearCodes: Record<string, string> = { "Factory New": "FN", "Minimal Wear": "MW", "Field-Tested": "FT", "Well-Worn": "WW", "Battle-Scarred": "BS" };
 const ALL_MARKETS = "all";
 type Tab = "history" | "active" | "quick" | "compare";
+const detailComponentLabels: Record<DetailComponentName, string> = {
+  listings: "analytics.dataListings",
+  sales: "analytics.dataSales",
+  buy_orders: "analytics.dataBuyOrders",
+};
+const detailStatusLabels = {
+  fresh: "analytics.dataFresh",
+  stale: "analytics.dataStale",
+  unavailable: "analytics.dataUnavailable",
+} as const;
 
 type Props = {
   skin: SkinDetails;
@@ -80,7 +89,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
   const detailQueries = useQueries({ queries: analyticsMarkets.map((item) => ({
     queryKey: ["variant-details", selectedListing?.variant_id, item.id],
     queryFn: ({ signal }: { signal: AbortSignal }) => api.variantDetails(selectedListing!.variant_id!, item.id, signal),
-    enabled: Boolean(selectedListing?.variant_id && (item.id === analyticsMarket || tab === "compare")), staleTime: 600_000,
+    enabled: Boolean(selectedListing?.variant_id && (item.id === analyticsMarket || tab === "compare")), staleTime: 0,
   })) });
   const detailsByMarket = useMemo(() => new Map<string, MarketplaceDetails>(detailQueries.map((query, index) => [analyticsMarkets[index]?.id ?? "", query.data]).filter((entry): entry is [string, MarketplaceDetails] => Boolean(entry[0] && entry[1]))), [analyticsMarkets, detailQueries]);
   const listingQuickSellQuery = useQuery({
@@ -158,6 +167,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
               <main className={styles.analyticsPane}>
                 <header className={styles.analyticsHeader}><div><span>{t("analytics.title")}</span><h2>{selectedListing.market_hash_name}</h2></div><div className={styles.marketTabs}>{analyticsMarkets.map((item) => <button className={analyticsMarket === item.id ? styles.activeChip : ""} type="button" key={item.id} onClick={() => setAnalyticsMarket(item.id)}>{item.display_name}</button>)}</div></header>
                 {selectedDetails && <ListingSnapshotStatus snapshot={selectedDetails} locale={locale} />}
+                {selectedDetails && <DetailComponentStatus details={selectedDetails} component={detailComponentForTab(tab)} locale={locale} />}
                 {selectedDetails?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
                 <nav className={styles.analyticsTabs} role="tablist">{(["history", "active", "quick", "compare"] as Tab[]).map((item) => <button role="tab" aria-selected={tab === item} className={tab === item ? styles.activeTab : ""} type="button" key={item} onClick={() => setTab(item)}>{t(item === "history" && analyticsMarket === "csmoney" ? "analytics.wikiTradePriceHistory" : `analytics.${item}`)}</button>)}</nav>
                 {detailQueries.some((item) => item.isLoading) && !selectedDetails && <div className={styles.emptyState}>{t("common.loading")}</div>}
@@ -217,10 +227,31 @@ function ListingSnapshotStatus({ snapshot, locale }: { snapshot: Pick<ListingsRe
   return labels.length ? <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p> : null;
 }
 
+export function detailComponentForTab(tab: Tab): DetailComponentName | undefined {
+  if (tab === "history") return "sales";
+  if (tab === "active") return "listings";
+  if (tab === "quick") return "buy_orders";
+  return undefined;
+}
+
+function DetailComponentStatus({ details, component, locale }: { details: MarketplaceDetails; component?: DetailComponentName; locale: string }) {
+  const { t } = useTranslation();
+  if (!component) return null;
+  const state = details.components?.[component];
+  if (!state) return null;
+  const componentLabel = t(detailComponentLabels[component]);
+  const statusLabel = t(detailStatusLabels[state.status]);
+  const labels = [
+    `${componentLabel}: ${statusLabel}`,
+    state.fetched_at && t("analytics.updated", { date: formatDate(state.fetched_at, locale) }),
+    state.error,
+  ].filter(Boolean);
+  return <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p>;
+}
+
 function ListingCard({ listing, marketplaceName, fallbackImage, locale, onClick }: { listing: Listing; marketplaceName: string; fallbackImage?: string | null; locale: string; onClick: () => void }) {
   const { t } = useTranslation();
-  const reduceMotion = useReducedMotion();
-  return <motion.button whileHover={reduceMotion ? undefined : { y: -3 }} className={styles.listingCard} type="button" onClick={onClick}><div className={styles.listingChips}><span className={styles.listingMarketplace}>{marketplaceName}</span><span>{listing.wear_name ? wearCodes[listing.wear_name] ?? listing.wear_name : "—"}</span>{listing.stattrak && <span>StatTrak™</span>}{listing.souvenir && <span>Souvenir</span>}{Boolean(listing.charms?.length) && <span>Charm</span>}</div><img src={listing.image_url ?? fallbackImage ?? ""} alt="" /><AttachmentPreview listing={listing} compact locale={locale} /><div className={styles.listingBottom}><strong>{formatUsd(listing.price_cents, locale)}</strong><span>Float {listing.float_value?.toFixed(6) ?? "—"}</span>{listing.predicted_price_cents && <small>{t("listings.estimate", { price: formatUsd(listing.predicted_price_cents, locale) })}</small>}</div></motion.button>;
+  return <button className={styles.listingCard} type="button" onClick={onClick}><div className={styles.listingChips}><span className={styles.listingMarketplace}>{marketplaceName}</span><span>{listing.wear_name ? wearCodes[listing.wear_name] ?? listing.wear_name : "—"}</span>{listing.stattrak && <span>StatTrak™</span>}{listing.souvenir && <span>Souvenir</span>}{Boolean(listing.charms?.length) && <span>Charm</span>}</div><img src={listing.image_url ?? fallbackImage ?? ""} alt="" /><AttachmentPreview listing={listing} compact locale={locale} /><div className={styles.listingBottom}><strong>{formatUsd(listing.price_cents, locale)}</strong><span>Float {listing.float_value?.toFixed(6) ?? "—"}</span>{listing.predicted_price_cents && <small>{t("listings.estimate", { price: formatUsd(listing.predicted_price_cents, locale) })}</small>}</div></button>;
 }
 function AttachmentRow({ items, label, locale }: { items?: Listing["stickers"]; label: string; locale: string }) {
   const { t } = useTranslation();

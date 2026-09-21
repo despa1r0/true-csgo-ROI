@@ -342,7 +342,8 @@ def _cached_liquidity_signals(
         rows = connection.execute(
             """
             SELECT d.marketplace, d.variant_id, d.listings, d.sales, d.buy_orders,
-                   d.sales_error, d.buy_orders_error, d.fetched_at
+                   d.sales_error, d.buy_orders_error, d.fetched_at,
+                   d.sales_fetched_at, d.buy_orders_fetched_at
             FROM marketplace_variant_details d
             JOIN skin_variants v ON v.id = d.variant_id
             WHERE v.skin_id = %s AND d.marketplace IN ('CSFloat', 'CSGO Market')
@@ -353,7 +354,8 @@ def _cached_liquidity_signals(
     result: dict[str, dict[str, dict[str, Any]]] = {}
     for row in rows:
         quote = quotes.get((row["variant_id"], row["marketplace"]))
-        fetched_at = row["fetched_at"]
+        sales_fetched_at = row.get("sales_fetched_at") or row["fetched_at"]
+        buy_orders_fetched_at = row.get("buy_orders_fetched_at") or row["fetched_at"]
         ttl_name = (
             "CSFLOAT_DETAILS_TTL_SECONDS" if row["marketplace"] == "CSFloat"
             else "CSGOMARKET_DETAILS_TTL_SECONDS"
@@ -363,8 +365,13 @@ def _cached_liquidity_signals(
         except ValueError:
             ttl = 600
         if (
-            quote is None or fetched_at is None or fetched_at.tzinfo is None
-            or fetched_at < now - timedelta(seconds=ttl)
+            quote is None
+            or sales_fetched_at is None
+            or sales_fetched_at.tzinfo is None
+            or sales_fetched_at < now - timedelta(seconds=ttl)
+            or buy_orders_fetched_at is None
+            or buy_orders_fetched_at.tzinfo is None
+            or buy_orders_fetched_at < now - timedelta(seconds=ttl)
         ):
             continue
         if row["marketplace"] == "CSFloat":
@@ -384,7 +391,7 @@ def _cached_liquidity_signals(
             "price_retention_percent": liquidity["price_retention_percent"],
             "near_bid_depth": liquidity["near_bid_depth"],
             "data_status": liquidity["data_status"],
-            "fetched_at": fetched_at,
+            "fetched_at": min(sales_fetched_at, buy_orders_fetched_at),
         }
     return result
 

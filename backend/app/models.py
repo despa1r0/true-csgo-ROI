@@ -17,14 +17,6 @@ class MarketPrice(BaseModel):
     stale: bool = False
 
 
-class SkinSearchResult(BaseModel):
-    """Вариант скина и его текущая минимальная цена на CSFloat, если лот есть."""
-
-    market_hash_name: str
-    csfloat_price: MarketPrice | None = None
-    csfloat_error: str | None = None
-
-
 class CatalogueSearchResult(BaseModel):
     id: str
     name: str

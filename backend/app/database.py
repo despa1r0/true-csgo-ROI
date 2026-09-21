@@ -222,6 +222,9 @@ def ensure_schema(connection: Connection) -> None:
             listings_error TEXT,
             sales_error TEXT,
             buy_orders_error TEXT,
+            listings_fetched_at TIMESTAMPTZ,
+            sales_fetched_at TIMESTAMPTZ,
+            buy_orders_fetched_at TIMESTAMPTZ,
             details_version SMALLINT NOT NULL DEFAULT 1,
             fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (marketplace, variant_id)
@@ -248,6 +251,16 @@ def ensure_schema(connection: Connection) -> None:
         "ALTER TABLE marketplace_variant_details "
         "ADD COLUMN IF NOT EXISTS details_version SMALLINT NOT NULL DEFAULT 1"
     )
+    for component in ("listings", "sales", "buy_orders"):
+        connection.execute(
+            "ALTER TABLE marketplace_variant_details "
+            f"ADD COLUMN IF NOT EXISTS {component}_fetched_at TIMESTAMPTZ"
+        )
+        connection.execute(
+            f"UPDATE marketplace_variant_details "
+            f"SET {component}_fetched_at = fetched_at "
+            f"WHERE {component}_fetched_at IS NULL AND {component}_error IS NULL"
+        )
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS csmoney_demand_signals (

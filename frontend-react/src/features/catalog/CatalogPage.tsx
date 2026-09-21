@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -15,7 +14,6 @@ const wearCodes: Record<string, string> = { "Factory New": "FN", "Minimal Wear":
 
 export function CatalogPage() {
   const { i18n, t } = useTranslation();
-  const reduceMotion = useReducedMotion();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [filters, setFilters] = useState({ item_type: "", weapon: "", rarity: "", collection: "" });
@@ -72,15 +70,13 @@ export function CatalogPage() {
           <label htmlFor="skin-search">{t("catalog.search")}</label>
           <input id="skin-search" type="search" autoComplete="off" value={query} placeholder={t("catalog.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} onFocus={() => selectedResult && query !== selectedResult.name && setSelectedResult(null)} />
           <span className={styles.searchIcon}>⌕</span>
-          <AnimatePresence>
-            {searchEnabled && query !== selectedResult?.name && (
-              <motion.div className={styles.suggestions} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
-                {searchQuery.isLoading && <p>{t("common.loading")}</p>}
-                {searchQuery.data?.map((result) => <button type="button" key={result.id} onClick={() => chooseSkin(result)}><img src={result.image_url ?? ""} alt="" /><span><strong>{result.name}</strong><small>{result.weapon_name ?? t(`catalogTypes.${result.item_type}`, { defaultValue: result.item_type })} · {t("catalog.variants", { count: result.variant_count })}</small></span><i style={{ background: result.rarity_color ?? undefined }} /></button>)}
-                {searchQuery.data?.length === 0 && <p>{t("catalog.results", { count: 0 })}</p>}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {searchEnabled && query !== selectedResult?.name && (
+            <div className={styles.suggestions}>
+              {searchQuery.isLoading && <p>{t("common.loading")}</p>}
+              {searchQuery.data?.map((result) => <button type="button" key={result.id} onClick={() => chooseSkin(result)}><img src={result.image_url ?? ""} alt="" /><span><strong>{result.name}</strong><small>{result.weapon_name ?? t(`catalogTypes.${result.item_type}`, { defaultValue: result.item_type })} · {t("catalog.variants", { count: result.variant_count })}</small></span><i style={{ background: result.rarity_color ?? undefined }} /></button>)}
+              {searchQuery.data?.length === 0 && <p>{t("catalog.results", { count: 0 })}</p>}
+            </div>
+          )}
         </div>
         <div className={styles.catalogFilters}>
           <label><span>{t("catalog.itemType")}</span><select value={filters.item_type} onChange={(event) => setFilters({ ...filters, item_type: event.target.value, weapon: event.target.value && event.target.value !== "skin" ? "" : filters.weapon })}><option value="">{t("catalog.any")}</option>{filterQuery.data?.item_types.map((item) => <option key={item.id} value={item.id}>{t(`catalogTypes.${item.id}`, { defaultValue: item.name })} · {item.count}</option>)}</select></label>
@@ -94,7 +90,7 @@ export function CatalogPage() {
       <ProfitSettings value={profit} marketplaces={marketplaces} onChange={setProfit} />
 
       {skinQuery.data && (
-        <motion.section className={styles.skinSection} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+        <section className={styles.skinSection}>
           <header className={styles.skinHeader}>
             <img src={skinQuery.data.image_url ?? ""} alt="" />
             <div><span>{t("catalog.selected")}</span><h2>{skinQuery.data.name}</h2><p>{[skinQuery.data.weapon_name ?? t(`catalogTypes.${skinQuery.data.item_type}`, { defaultValue: skinQuery.data.item_type }), skinQuery.data.rarity_name, skinQuery.data.collections?.map((item) => item.name).join(" · ")].filter(Boolean).join(" · ")}</p></div>
@@ -106,18 +102,18 @@ export function CatalogPage() {
               const variants = quality.variants.map((variant) => comparisonByVariant.get(variant.id)).filter((item) => item != null);
               const { quotes, cheapest, best } = selectQualityCardMarketData(variants, profit.buyMarketplace, profit.sellMarketplace);
               const wearLabel = quality.wear === "Standard" ? t("catalog.standard") : quality.wear;
-              return <motion.button whileHover={reduceMotion ? undefined : { y: -4 }} type="button" className={styles.qualityCard} key={quality.wear} onClick={() => setSelectedQuality(quality)}>
+              return <button type="button" className={styles.qualityCard} key={quality.wear} onClick={() => setSelectedQuality(quality)}>
                 <div className={styles.qualityTop}><strong>{wearCodes[quality.wear] ?? "1"}</strong><span>{wearLabel}</span></div>
                 <img src={quality.variants[0]?.image_url ?? skinQuery.data.image_url ?? ""} alt="" />
                 <div className={styles.qualityPrice}><strong>{cheapest ? t("catalog.marketFrom", { price: formatUsd(cheapest.quote.price_cents, locale) }) : t("catalog.noPrice")}</strong><span>{cheapest ? marketplaces.find((item) => item.id === cheapest.marketplaceId)?.display_name ?? cheapest.marketplaceId : "—"}</span></div>
                 <div className={styles.marketMini}>{marketplaces.filter((market) => market.capabilities.supports_listings).map((market) => { const marketQuote = quotes.find((item) => item.marketplaceId === market.id && item.variant.variant_id === cheapest?.variant.variant_id)?.quote; return <span key={market.id}><small>{market.display_name}</small><b>{formatUsd(marketQuote?.price_cents, locale)}</b></span>; })}</div>
                 {best && <div className={best.profit_cents >= 0 ? styles.positive : styles.negative}>{best.buy_marketplace} → {best.sell_marketplace} · {best.profit_cents > 0 ? "+" : ""}{formatUsd(best.profit_cents, locale)} · {best.cash_roi_percent}%</div>}
                 {best && <FlipRiskNotice level={best.risk_level} score={best.sell_liquidity?.score} cashRoiPercent={best.cash_roi_percent} compact />}
-              </motion.button>;
+              </button>;
             })}
             {skinQuery.data.qualities.length === 0 && <p className={styles.emptyState}>{t("catalog.marketDataUnavailable")}</p>}
           </div>
-        </motion.section>
+        </section>
       )}
 
       {skinQuery.data && selectedQuality && <ListingDialog skin={skinQuery.data} quality={selectedQuality} marketplaces={marketplaces} comparison={comparisonByVariant} open onOpenChange={(open) => !open && setSelectedQuality(null)} />}

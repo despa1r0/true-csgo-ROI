@@ -46,7 +46,8 @@
     "minPrice": "Minimum ask", "bestBid": "Best bid", "liquidity": "Liquidity", "salesDay": "Sales / day", "bidDepth": "Bid depth", "updated": "Updated {{date}}",
     "date": "Date", "price": "Price", "quantity": "Quantity", "conditions": "Conditions", "market": "Market", "notSupported": "Not supported by this marketplace",
     "buy": "Buy", "sell": "Sell", "netProfit": "Net profit", "roi": "Cash ROI", "selectedListing": "SELECTED LISTING", "backToListings": "Back to listings", "attachments": "Stickers / charms", "buyPreview": "Purchase item preview", "sellPreview": "Sale item preview",
-    "sourceNote": "Every point is a real sale returned by the marketplace. No synthetic values are generated.", "stale": "stale cache", "quoteUnavailable": "Quote metadata is unavailable.", "quickUnavailable": "The selected marketplace does not support quick sale requests."
+    "sourceNote": "Every point is a real sale returned by the marketplace. No synthetic values are generated.", "stale": "stale cache", "quoteUnavailable": "Quote metadata is unavailable.", "quickUnavailable": "The selected marketplace does not support quick sale requests.",
+    "dataListings": "Listings", "dataSales": "Sales", "dataBuyOrders": "Buy orders", "dataFresh": "fresh", "dataStale": "stale", "dataUnavailable": "unavailable"
   },
   "calculator": {
     "eyebrow": "MANUAL DEAL MODEL", "title": "Profit calculator", "subtitle": "Use your actual buy and sell prices. Fee rates stay server-controlled.",

@@ -2,8 +2,6 @@
 .venv
 .pytest_cache
 **/__pycache__
-frontend/node_modules
-frontend/dist
 frontend-react/node_modules
 frontend-react/dist
 .env

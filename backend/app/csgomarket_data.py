@@ -10,6 +10,11 @@ from urllib.parse import quote
 
 from psycopg.types.json import Jsonb
 
+from .cache_freshness import (
+    annotate_component_freshness,
+    public_component_states,
+    refreshed_component_timestamps,
+)
 from .csgomarket import (
     CSGOMARKET_ITEM_URL,
     CsgoMarketRequestError,
@@ -25,7 +30,7 @@ from .market_data import LIQUIDITY_METHOD, calculate_liquidity
 MARKETPLACE = "CSGO Market"
 DEFAULT_CACHE_TTL_SECONDS = 300
 DEFAULT_DETAILS_TTL_SECONDS = 600
-DETAILS_VERSION = 1
+DETAILS_VERSION = 2
 WEAR_NAMES = {
     "factory-new": "Factory New",
     "minimal-wear": "Minimal Wear",
@@ -226,7 +231,19 @@ def get_csgomarket_variant_details(variant_id: str) -> dict[str, Any] | None:
         stale = True
     if buy_orders_error and cached:
         buy_orders = cached["buy_orders"]
+        sell_orders = cached.get("sell_orders") or []
         stale = True
+
+    attempted_at = datetime.now(timezone.utc)
+    component_timestamps = refreshed_component_timestamps(
+        cached,
+        errors={
+            "listings": listings_error,
+            "sales": sales_error,
+            "buy_orders": buy_orders_error,
+        },
+        successful_at=attempted_at,
+    )
 
     lowest_ask_cents = context.get("price_cents") or (
         listings[0]["price_cents"] if listings else None
@@ -247,7 +264,8 @@ def get_csgomarket_variant_details(variant_id: str) -> dict[str, Any] | None:
         "listings_error": listings_error,
         "sales_error": sales_error,
         "buy_orders_error": buy_orders_error,
-        "fetched_at": datetime.now(timezone.utc),
+        **component_timestamps,
+        "fetched_at": attempted_at,
     }
     _store_variant_details(variant_id, detail)
     return _detail_response(context, detail, cached=False, stale=stale)
@@ -266,14 +284,24 @@ def get_csgomarket_variant_fast_buy(variant_id: str) -> dict[str, Any] | None:
             return None
         cached = connection.execute(
             """
-            SELECT buy_orders, buy_orders_error,
-                   fetched_at >= NOW() - (%s * INTERVAL '1 second') AS is_fresh
+            SELECT buy_orders, buy_orders_error, buy_orders_fetched_at,
+                   details_version, NOW() AS checked_at
             FROM marketplace_variant_details
             WHERE marketplace = %s AND variant_id = %s
             """,
-            (ttl_seconds, MARKETPLACE, variant_id),
+            (MARKETPLACE, variant_id),
         ).fetchone()
-    if cached and cached["is_fresh"]:
+    cached = (
+        annotate_component_freshness(
+            dict(cached),
+            ttl_seconds=ttl_seconds,
+            minimum_version=DETAILS_VERSION,
+            components=("buy_orders",),
+        )
+        if cached
+        else None
+    )
+    if cached and cached["buy_orders_is_fresh"]:
         orders = cached.get("buy_orders") or []
         return {
             "best_price_cents": max(
@@ -468,15 +496,23 @@ def _load_variant_detail_cache(
             """
             SELECT sales_count, liquidity_score, liquidity_label, listings, sales,
                    buy_orders, sell_orders, listings_error, sales_error, buy_orders_error,
-                   fetched_at,
-                   details_version >= %s
-                     AND fetched_at >= NOW() - (%s * INTERVAL '1 second') AS is_fresh
+                   listings_fetched_at, sales_fetched_at, buy_orders_fetched_at,
+                   details_version, fetched_at, NOW() AS checked_at
             FROM marketplace_variant_details
             WHERE marketplace = %s AND variant_id = %s
             """,
-            (DETAILS_VERSION, ttl_seconds, MARKETPLACE, variant_id),
+            (MARKETPLACE, variant_id),
         ).fetchone()
-    return dict(context), dict(cached) if cached else None
+    return (
+        dict(context),
+        annotate_component_freshness(
+            dict(cached),
+            ttl_seconds=ttl_seconds,
+            minimum_version=DETAILS_VERSION,
+        )
+        if cached
+        else None,
+    )
 
 
 def _store_variant_details(variant_id: str, detail: dict[str, Any]) -> None:
@@ -486,8 +522,12 @@ def _store_variant_details(variant_id: str, detail: dict[str, Any]) -> None:
             INSERT INTO marketplace_variant_details (
                 marketplace, variant_id, sales_count, liquidity_score,
                 liquidity_label, listings, sales, buy_orders, sell_orders, listings_error,
-                sales_error, buy_orders_error, details_version, fetched_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                sales_error, buy_orders_error, listings_fetched_at,
+                sales_fetched_at, buy_orders_fetched_at, details_version, fetched_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, NOW()
+            )
             ON CONFLICT (marketplace, variant_id) DO UPDATE SET
                 sales_count = EXCLUDED.sales_count,
                 liquidity_score = EXCLUDED.liquidity_score,
@@ -499,6 +539,9 @@ def _store_variant_details(variant_id: str, detail: dict[str, Any]) -> None:
                 listings_error = EXCLUDED.listings_error,
                 sales_error = EXCLUDED.sales_error,
                 buy_orders_error = EXCLUDED.buy_orders_error,
+                listings_fetched_at = EXCLUDED.listings_fetched_at,
+                sales_fetched_at = EXCLUDED.sales_fetched_at,
+                buy_orders_fetched_at = EXCLUDED.buy_orders_fetched_at,
                 details_version = EXCLUDED.details_version,
                 fetched_at = NOW()
             """,
@@ -515,6 +558,9 @@ def _store_variant_details(variant_id: str, detail: dict[str, Any]) -> None:
                 detail["listings_error"],
                 detail["sales_error"],
                 detail["buy_orders_error"],
+                detail["listings_fetched_at"],
+                detail["sales_fetched_at"],
+                detail["buy_orders_fetched_at"],
                 DETAILS_VERSION,
             ),
         )
@@ -544,6 +590,10 @@ def _detail_response(
         order["quantity"]
         for order in buy_orders
         if order["price_cents"] == best_buy_price
+    )
+    components = public_component_states(detail)
+    component_is_stale = any(
+        component["status"] != "fresh" for component in components.values()
     )
     return {
         "marketplace": MARKETPLACE,
@@ -589,9 +639,11 @@ def _detail_response(
         "listings_error": detail.get("listings_error"),
         "sales_error": detail.get("sales_error"),
         "buy_orders_error": detail.get("buy_orders_error"),
+        "components": components,
         "fetched_at": detail.get("fetched_at"),
         "cached": cached,
-        "stale": stale,
+        "stale": stale or component_is_stale,
+        "is_partial": component_is_stale,
     }
 
 

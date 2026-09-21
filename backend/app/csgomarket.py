@@ -346,7 +346,7 @@ def _require_successful_usd_payload(
 
 
 def _wait_for_private_request_slot() -> None:
-    """Space all private calls process-wide so no one-second window exceeds 4."""
+    """Space all private calls process-wide so the rate stays at or below 0.5/s."""
     global _next_private_request_at
 
     configured_rate = _positive_float_env(
@@ -354,8 +354,7 @@ def _wait_for_private_request_slot() -> None:
         DEFAULT_MAX_PRIVATE_REQUESTS_PER_SECOND,
     )
     safe_rate = min(configured_rate, MAX_SAFE_PRIVATE_REQUESTS_PER_SECOND)
-    # A small safety margin prevents boundary jitter from placing five starts
-    # into one rolling second when the configured ceiling is four.
+    # A small safety margin keeps starts below the configured rolling limit.
     interval = 1.0 / safe_rate + 0.01
     with _private_rate_lock:
         now = time.monotonic()

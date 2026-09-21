@@ -39,10 +39,10 @@ def get_observed_sales_priorities(
             SELECT v.id AS variant_id, v.market_hash_name,
                    cf.sales AS csfloat_sales,
                    cf.sales_error AS csfloat_sales_error,
-                   cf.fetched_at AS csfloat_fetched_at,
+                   COALESCE(cf.sales_fetched_at, cf.fetched_at) AS csfloat_fetched_at,
                    cm.sales AS csgomarket_sales,
                    cm.sales_error AS csgomarket_sales_error,
-                   cm.fetched_at AS csgomarket_fetched_at,
+                   COALESCE(cm.sales_fetched_at, cm.fetched_at) AS csgomarket_fetched_at,
                    ds.sales_source AS signal_source,
                    ds.sales_count_7d AS signal_count,
                    ds.status AS signal_status,
@@ -84,10 +84,10 @@ def refresh_missing_demand_signals(
             SELECT v.id AS variant_id, v.market_hash_name,
                    cf.sales AS csfloat_sales,
                    cf.sales_error AS csfloat_sales_error,
-                   cf.fetched_at AS csfloat_fetched_at,
+                   COALESCE(cf.sales_fetched_at, cf.fetched_at) AS csfloat_fetched_at,
                    cm.sales AS csgomarket_sales,
                    cm.sales_error AS csgomarket_sales_error,
-                   cm.fetched_at AS csgomarket_fetched_at
+                   COALESCE(cm.sales_fetched_at, cm.fetched_at) AS csgomarket_fetched_at
             FROM skin_variants v
             LEFT JOIN marketplace_variant_details cf
               ON cf.variant_id = v.id AND cf.marketplace = 'CSFloat'
@@ -144,10 +144,10 @@ def get_targeted_sales_priority(
             SELECT v.id AS variant_id, v.market_hash_name,
                    cf.sales AS csfloat_sales,
                    cf.sales_error AS csfloat_sales_error,
-                   cf.fetched_at AS csfloat_fetched_at,
+                   COALESCE(cf.sales_fetched_at, cf.fetched_at) AS csfloat_fetched_at,
                    cm.sales AS csgomarket_sales,
                    cm.sales_error AS csgomarket_sales_error,
-                   cm.fetched_at AS csgomarket_fetched_at,
+                   COALESCE(cm.sales_fetched_at, cm.fetched_at) AS csgomarket_fetched_at,
                    ds.sales_source AS signal_source,
                    ds.sales_count_7d AS signal_count,
                    ds.status AS signal_status,

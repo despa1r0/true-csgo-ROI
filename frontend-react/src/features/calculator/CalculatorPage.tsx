@@ -1,5 +1,4 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -131,7 +130,7 @@ export function CalculatorPage() {
 
       <section className={styles.resultPanel} aria-live="polite">
         <header><span>{t("calculator.result")}</span>{calculation.data && <strong className={calculation.data.profit_cents > 0 ? styles.resultPositive : calculation.data.profit_cents < 0 ? styles.resultNegative : ""}>{t(calculation.data.profit_cents > 0 ? "calculator.positive" : calculation.data.profit_cents < 0 ? "calculator.negative" : "calculator.neutral")}</strong>}</header>
-        {calculation.data ? <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={styles.resultBody}>
+        {calculation.data ? <div className={styles.resultBody}>
           <div className={styles.heroResult}><span>{t("calculator.netProfit")}</span><strong className={calculation.data.profit_cents >= 0 ? styles.resultPositive : styles.resultNegative}>{calculation.data.profit_cents > 0 ? "+" : ""}{formatUsd(calculation.data.profit_cents, locale)}</strong><small>{t("calculator.cashRoi")} · {calculation.data.effective_buy_cents === 0 ? "—" : `${calculation.data.cash_roi_percent}%`}</small></div>
           <FlipRiskNotice level={riskLevel} score={sellLiquidity?.score} cashRoiPercent={calculation.data.cash_roi_percent} />
           <ResultRow label={t("calculator.effectiveBuy")} value={formatUsd(calculation.data.effective_buy_cents, locale)} /><ResultRow label={t("calculator.depositFee")} value={formatUsd(calculation.data.deposit_fee_cents, locale)} />
@@ -145,7 +144,7 @@ export function CalculatorPage() {
               <ResultMetric label={t("calculator.extraProfit")} value={formatUsd(calculation.data.profit_cents - referenceCalculation.data.profit_cents, locale)} note={calculation.data.effective_buy_cents === 0 || referenceCalculation.data.effective_buy_cents === 0 ? `${t("calculator.roiDelta")} · —` : `${t("calculator.roiDelta")} · ${(calculation.data.cash_roi_percent - referenceCalculation.data.cash_roi_percent).toFixed(2)} p.p.`} />
             </div> : <small>{t("calculator.referenceError")}</small>}
           </div>}
-        </motion.div> : <div className={styles.resultPlaceholder}><span>ROI</span><p>{t("calculator.subtitle")}</p></div>}
+        </div> : <div className={styles.resultPlaceholder}><span>ROI</span><p>{t("calculator.subtitle")}</p></div>}
       </section>
     </form>
   </div>;

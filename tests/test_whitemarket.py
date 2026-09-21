@@ -1,8 +1,6 @@
 import json
 
 import pytest
-from urllib.error import HTTPError
-from io import BytesIO
 
 from backend.app.marketplaces import whitemarket
 

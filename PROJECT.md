@@ -24,7 +24,7 @@
 18. Лоты и quick sell White.Market через отдельный адаптер.
 19. Общий PostgreSQL-кэш рыночных данных.
 20. Сравнение цен и направлений сделки с учётом комиссий.
-21. Защищённый лимит приватного API CSGO Market: не более 4 запросов/с.
+21. Защищённый лимит приватного API CSGO Market: не более 0,5 запроса/с (30 в минуту).
 22. Multi-stage Docker-сборка React-приложения и FastAPI в одном production-образе.
 23. Отдельные тесты границы поддержки наклеек/charm в `tests/test_listing_attachment_capabilities.py`.
 
@@ -45,8 +45,8 @@
 ## Формула прибыли
 
 ```text
-effective_buy = buy_price + buy_fees
-effective_payout = sell_price - sell_fees
+effective_buy = buy_price + deposit_fee
+effective_payout = sell_price - sell_fee - withdraw_fee
 profit = effective_payout - effective_buy
 roi = profit / effective_buy * 100
 ```

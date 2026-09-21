@@ -57,7 +57,3 @@ def calculate_profit(
         cash_roi_percent=roi(profit_cents, effective_buy_cents),
         roi_percent=roi(profit_cents, effective_buy_cents),
     )
-
-
-# Temporary compatibility for imports of the old helper name.
-calculate = calculate_fee

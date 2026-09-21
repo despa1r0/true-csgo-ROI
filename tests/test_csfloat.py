@@ -577,3 +577,86 @@ def test_quick_sell_is_calculated_for_the_selected_listing(monkeypatch):
     assert result["discount_percent"] == 5.0
     assert result["near_bid_depth"] == 3
     assert "выбранного лота" in result["note"]
+
+
+def test_failed_detail_component_is_retried_within_ttl(monkeypatch):
+    old_timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    context = {
+        "variant_id": "variant-1",
+        "market_hash_name": "AK-47 | Redline (Field-Tested)",
+        "name": "AK-47 | Redline",
+        "price_cents": 1200,
+        "active_listings": 1,
+        "item_url": None,
+    }
+    state = {
+        "cached": {
+            "sales_count": 1,
+            "liquidity_score": None,
+            "liquidity_label": "unavailable",
+            "listings": [{"listing_id": "old-listing", "price_cents": 1200}],
+            "sales": [{"price_cents": 1100, "sold_at": "2026-01-01T00:00:00Z"}],
+            "buy_orders": [{"price_cents": 1000, "quantity": 1}],
+            "listings_error": None,
+            "sales_error": None,
+            "buy_orders_error": None,
+            "listings_fetched_at": old_timestamp,
+            "sales_fetched_at": old_timestamp,
+            "buy_orders_fetched_at": old_timestamp,
+            "fetched_at": old_timestamp,
+            "listings_is_fresh": False,
+            "sales_is_fresh": False,
+            "buy_orders_is_fresh": False,
+            "is_fresh": False,
+        }
+    }
+    listing_calls = []
+
+    def fake_load(_variant_id, _ttl_seconds):
+        return context, state["cached"]
+
+    def fake_store(_variant_id, detail):
+        stored = dict(detail)
+        stored["listings_is_fresh"] = stored["listings_error"] is None
+        stored["sales_is_fresh"] = stored["sales_error"] is None
+        stored["buy_orders_is_fresh"] = stored["buy_orders_error"] is None
+        stored["is_fresh"] = all(
+            stored[name]
+            for name in (
+                "listings_is_fresh",
+                "sales_is_fresh",
+                "buy_orders_is_fresh",
+            )
+        )
+        state["cached"] = stored
+
+    def failed_listings(*_args, **_kwargs):
+        listing_calls.append("attempt")
+        raise csfloat.CsfloatRequestError("listings unavailable")
+
+    monkeypatch.setattr(market_data, "_load_variant_detail_cache", fake_load)
+    monkeypatch.setattr(market_data, "_store_variant_details", fake_store)
+    monkeypatch.setattr(market_data, "get_active_listings", failed_listings)
+    monkeypatch.setattr(
+        market_data,
+        "get_sales_history",
+        lambda *_args, **_kwargs: [
+            {"price_cents": 1150, "sold_at": "2026-01-02T00:00:00Z"}
+        ],
+    )
+    monkeypatch.setattr(
+        market_data,
+        "get_buy_orders",
+        lambda *_args, **_kwargs: [{"price_cents": 1050, "quantity": 2}],
+    )
+
+    first = market_data.get_csfloat_variant_details("variant-1")
+    second = market_data.get_csfloat_variant_details("variant-1")
+
+    assert listing_calls == ["attempt", "attempt"]
+    assert first["components"]["listings"]["status"] == "stale"
+    assert second["components"]["listings"]["status"] == "stale"
+    assert second["components"]["sales"]["status"] == "fresh"
+    assert second["components"]["buy_orders"]["status"] == "fresh"
+    assert state["cached"]["listings_fetched_at"] == old_timestamp
+    assert state["cached"]["sales_fetched_at"] > old_timestamp

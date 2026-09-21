@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ListingFilters, MarketplaceOption } from "@/shared/api";
 import {
   attachmentTooltip,
+  detailComponentForTab,
   filtersForMarketplace,
   isPaintIndexUnavailable,
   unsupportedAttachmentFilters,
@@ -54,5 +55,12 @@ describe("listing marketplace helpers", () => {
   it("recognizes both English and Russian legacy paint-index errors", () => {
     expect(isPaintIndexUnavailable("This item has no paint index")).toBe(true);
     expect(isPaintIndexUnavailable("Для скина отсутствует индекс покраски")).toBe(true);
+  });
+
+  it("maps analytics tabs to independently refreshed cache components", () => {
+    expect(detailComponentForTab("history")).toBe("sales");
+    expect(detailComponentForTab("active")).toBe("listings");
+    expect(detailComponentForTab("quick")).toBe("buy_orders");
+    expect(detailComponentForTab("compare")).toBeUndefined();
   });
 });

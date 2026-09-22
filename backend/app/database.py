@@ -18,9 +18,34 @@ def database_url() -> str:
     return os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 
 
+def connection_settings() -> dict[str, str | int]:
+    """Return URL or discrete libpq settings without interpolating credentials."""
+    host = os.getenv("PGHOST")
+    if not host:
+        return {"conninfo": database_url()}
+
+    variable_names = ("PGDATABASE", "PGUSER", "PGPASSWORD")
+    missing = [name for name in variable_names if os.getenv(name) is None]
+    if missing:
+        raise RuntimeError(f"Missing PostgreSQL settings: {', '.join(missing)}")
+
+    try:
+        port = int(os.getenv("PGPORT", "5432"))
+    except ValueError as error:
+        raise RuntimeError("PGPORT must be an integer") from error
+
+    return {
+        "host": host,
+        "port": port,
+        "dbname": os.environ["PGDATABASE"],
+        "user": os.environ["PGUSER"],
+        "password": os.environ["PGPASSWORD"],
+    }
+
+
 @contextmanager
 def get_connection() -> Iterator[Connection]:
-    with psycopg.connect(database_url(), row_factory=dict_row) as connection:
+    with psycopg.connect(**connection_settings(), row_factory=dict_row) as connection:
         yield connection
 
 

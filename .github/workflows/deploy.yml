@@ -152,8 +152,55 @@ jobs:
 
           mv -f -- "$staged_file" docker-compose.prod.yml
           compose=(docker compose --ansi never -f docker-compose.prod.yml)
-          echo "Starting production services"
-          "${compose[@]}" up -d
+
+          echo "Starting PostgreSQL"
+          "${compose[@]}" up -d db
+
+          db_state=unknown
+          for ((attempt = 1; attempt <= 24; attempt++)); do
+            db_state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' true-roi-postgres 2>/dev/null || true)
+            if [[ "$db_state" == healthy || "$db_state" == unhealthy || "$db_state" == exited ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$db_state" != healthy ]]; then
+            echo "PostgreSQL did not become healthy (state: $db_state)" >&2
+            "${compose[@]}" logs --tail=50 db >&2
+            exit 1
+          fi
+
+          # POSTGRES_PASSWORD only initializes an empty volume. Keep an existing
+          # role in sync when the VPS .env password is intentionally rotated.
+          db_environment=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' true-roi-postgres)
+          postgres_user=$(sed -n 's/^POSTGRES_USER=//p' <<<"$db_environment")
+          postgres_db=$(sed -n 's/^POSTGRES_DB=//p' <<<"$db_environment")
+          postgres_password=$(sed -n 's/^POSTGRES_PASSWORD=//p' <<<"$db_environment")
+          unset db_environment
+          if [[ -z "$postgres_user" || -z "$postgres_db" || -z "$postgres_password" ]]; then
+            echo "PostgreSQL container is missing required environment values" >&2
+            exit 1
+          fi
+          echo "Synchronizing PostgreSQL role credentials"
+          docker exec -i \
+            -e TARGET_ROLE="$postgres_user" \
+            -e TARGET_DB="$postgres_db" \
+            -e TARGET_PASSWORD="$postgres_password" \
+            true-roi-postgres \
+            sh -ec 'psql --username "$TARGET_ROLE" --dbname "$TARGET_DB" --set=ON_ERROR_STOP=1 --set=role_name="$TARGET_ROLE" --set=role_password="$TARGET_PASSWORD"' <<'SQL'
+          SELECT format('ALTER ROLE %I WITH PASSWORD %L', :'role_name', :'role_password') \gexec
+          SQL
+          unset postgres_password
+
+          echo "Seeding catalogue before replacing application containers"
+          if ! "${compose[@]}" up --no-deps --abort-on-container-exit --exit-code-from catalog-seed catalog-seed; then
+            echo "Catalogue seed failed" >&2
+            "${compose[@]}" logs --tail=100 catalog-seed >&2
+            exit 1
+          fi
+
+          echo "Starting production application services"
+          "${compose[@]}" up -d --no-deps api csmoney-worker csmoney-demand
 
           api_state=unknown
           for ((attempt = 1; attempt <= 24; attempt++)); do

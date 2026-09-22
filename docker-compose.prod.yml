@@ -6,6 +6,13 @@ x-logging: &service-logging
     max-size: "10m"
     max-file: "3"
 
+x-database-environment: &database-environment
+  PGHOST: db
+  PGPORT: "5432"
+  PGDATABASE: ${POSTGRES_DB}
+  PGUSER: ${POSTGRES_USER}
+  PGPASSWORD: ${POSTGRES_PASSWORD}
+
 services:
   db:
     container_name: true-roi-postgres
@@ -29,7 +36,7 @@ services:
     logging: *service-logging
     command: ["python", "-m", "backend.app.seed_catalog"]
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      <<: *database-environment
       CATALOG_SOURCE_URL: ${CATALOG_SOURCE_URL}
       CATALOG_GROUPED_SOURCE_URL: ${CATALOG_GROUPED_SOURCE_URL}
       CATALOG_EXTRA_SOURCE_BASE_URL: ${CATALOG_EXTRA_SOURCE_BASE_URL}
@@ -43,7 +50,7 @@ services:
     image: ghcr.io/despa1r0/true-csgo-roi:${IMAGE_TAG}
     logging: *service-logging
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      <<: *database-environment
       CSFLOAT_API_KEY: ${CSFLOAT_API_KEY:-}
       CSFLOAT_CACHE_TTL_SECONDS: ${CSFLOAT_CACHE_TTL_SECONDS:-300}
       CSFLOAT_DETAILS_TTL_SECONDS: ${CSFLOAT_DETAILS_TTL_SECONDS:-600}
@@ -72,7 +79,7 @@ services:
     image: ghcr.io/despa1r0/true-csgo-roi-csmoney:${IMAGE_TAG}
     logging: *service-logging
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      <<: *database-environment
       CSGOMARKET_API_KEY: ${CSGOMARKET_API_KEY:-}
       CSGOMARKET_MAX_REQUESTS_PER_SECOND: ${CSGOMARKET_MAX_REQUESTS_PER_SECOND:-0.5}
       CSMONEY_CACHE_TTL_SECONDS: ${CSMONEY_CACHE_TTL_SECONDS:-1800}
@@ -91,7 +98,7 @@ services:
     logging: *service-logging
     command: ["python", "-m", "backend.app.csmoney_demand_worker"]
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      <<: *database-environment
       CSGOMARKET_HISTORY_INDEX_TTL_SECONDS: ${CSGOMARKET_HISTORY_INDEX_TTL_SECONDS:-3600}
       CSMONEY_SCHEDULE_INTERVAL_SECONDS: ${CSMONEY_SCHEDULE_INTERVAL_SECONDS:-300}
     depends_on:

@@ -3,12 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#08090d" />
+    <meta name="theme-color" content="#f3f7f6" />
     <meta
       name="description"
       content="trueROI marketplace analytics and profit calculator"
     />
-    <title>trueROI</title>
+    <script>
+      (() => {
+        const saved = localStorage.getItem("trueroi-theme");
+        const theme = saved === "light" || saved === "dark" ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#090c0c" : "#f3f7f6";
+      })();
+    </script>
+    <title>trueROI — CS2 Market Analytics</title>
   </head>
   <body>
     <div id="root"></div>

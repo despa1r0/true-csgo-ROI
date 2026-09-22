@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
@@ -18,6 +18,7 @@ const PriceHistoryChart = lazy(() => import("@/features/analytics/PriceHistoryCh
 const wearCodes: Record<string, string> = { "Factory New": "FN", "Minimal Wear": "MW", "Field-Tested": "FT", "Well-Worn": "WW", "Battle-Scarred": "BS" };
 const ALL_MARKETS = "all";
 type Tab = "history" | "active" | "quick" | "compare";
+const analyticsTabs: Tab[] = ["history", "active", "quick", "compare"];
 const detailComponentLabels: Record<DetailComponentName, string> = {
   listings: "analytics.dataListings",
   sales: "analytics.dataSales",
@@ -101,6 +102,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
   const selectedDetails = detailsByMarket.get(analyticsMarket);
   const selectedCapability = marketplaces.find((item) => item.id === analyticsMarket)?.capabilities;
   const selectedComparison = selectedListing?.variant_id ? comparison.get(selectedListing.variant_id) : undefined;
+  const activeTabIndex = analyticsTabs.indexOf(tab);
 
   function resetFilters() { setVariant("any"); setMinFloat(""); setMaxFloat(""); setMinPrice(""); setMaxPrice(""); setHasStickers(false); setHasCharm(false); setAppliedFilters({ wear: wearSlugs[quality.wear], sort_by: "lowest_price", variant: "any", has_stickers: false, has_charm: false, limit: 30 }); }
   function applyFilters() { setAppliedFilters(listingFilters); }
@@ -122,13 +124,13 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
             <div className={styles.browserView}>
               <header className={styles.dialogHeader}><div><span>{t("listings.title")}</span><Dialog.Title>{skin.name}</Dialog.Title><p>{marketId === ALL_MARKETS ? t("listings.subtitleAll", { wear: quality.wear }) : t("listings.subtitle", { wear: quality.wear, market: market?.display_name ?? marketId })}</p></div><strong>{t("listings.count", { count: visibleListingCount })}</strong></header>
               <section className={styles.listingToolbar}>
-                <label><span>{t("listings.marketplace")}</span><select value={marketId} onChange={(event) => switchMarket(event.target.value)}><option value={ALL_MARKETS}>{t("listings.allMarketplaces")}</option>{listMarkets.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label>
-                <label><span>{t("listings.sort")}</span><select value={sort} onChange={(event) => setSort(event.target.value as ListingFilters["sort_by"])}><option value="lowest_price">{t("listings.lowest")}</option><option disabled={!canSortBestDeal && sort !== "best_deal"} value="best_deal">{t("listings.bestDeal")}</option></select></label>
-                <label><span>{t("listings.variant")}</span><select value={variant} onChange={(event) => setVariant(event.target.value as VariantKind)}><option value="any">{t("catalog.any")}</option><option value="normal">{t("listings.normal")}</option><option value="stattrak">{t("listings.stattrak")}</option><option value="souvenir">{t("listings.souvenir")}</option></select></label>
-                <fieldset><legend>{t("listings.float")}</legend><input aria-label="Minimum float" value={minFloat} onChange={(event) => setMinFloat(event.target.value)} placeholder="0.00" /><span>—</span><input aria-label="Maximum float" value={maxFloat} onChange={(event) => setMaxFloat(event.target.value)} placeholder="1.00" /></fieldset>
-                <fieldset><legend>{t("listings.price")}</legend><input aria-label="Minimum price" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="0" /><span>—</span><input aria-label="Maximum price" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="∞" /></fieldset>
-                <label className={styles.inlineCheck} title={!canFilterStickers ? t("listings.filtersUnsupported") : undefined}><input type="checkbox" checked={hasStickers} disabled={!canFilterStickers && !hasStickers} onChange={(event) => setHasStickers(event.target.checked)} />{t("listings.stickers")}</label>
-                <label className={styles.inlineCheck} title={!canFilterCharms ? t("listings.filtersUnsupported") : undefined}><input type="checkbox" checked={hasCharm} disabled={!canFilterCharms && !hasCharm} onChange={(event) => setHasCharm(event.target.checked)} />{t("listings.charms")}</label>
+                <label><span>{t("listings.marketplace")}</span><select name="listing-marketplace" value={marketId} onChange={(event) => switchMarket(event.target.value)}><option value={ALL_MARKETS}>{t("listings.allMarketplaces")}</option>{listMarkets.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label>
+                <label><span>{t("listings.sort")}</span><select name="listing-sort" value={sort} onChange={(event) => setSort(event.target.value as ListingFilters["sort_by"])}><option value="lowest_price">{t("listings.lowest")}</option><option disabled={!canSortBestDeal && sort !== "best_deal"} value="best_deal">{t("listings.bestDeal")}</option></select></label>
+                <label><span>{t("listings.variant")}</span><select name="listing-variant" value={variant} onChange={(event) => setVariant(event.target.value as VariantKind)}><option value="any">{t("catalog.any")}</option><option value="normal">{t("listings.normal")}</option><option value="stattrak">{t("listings.stattrak")}</option><option value="souvenir">{t("listings.souvenir")}</option></select></label>
+                <fieldset><legend>{t("listings.float")}</legend><input name="minimum-float" autoComplete="off" inputMode="decimal" aria-label={t("listings.minimumFloat")} value={minFloat} onChange={(event) => setMinFloat(event.target.value)} placeholder="0.00" /><span>—</span><input name="maximum-float" autoComplete="off" inputMode="decimal" aria-label={t("listings.maximumFloat")} value={maxFloat} onChange={(event) => setMaxFloat(event.target.value)} placeholder="1.00" /></fieldset>
+                <fieldset><legend>{t("listings.price")}</legend><input name="minimum-price" autoComplete="off" inputMode="decimal" aria-label={t("listings.minimumPrice")} value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="0" /><span>—</span><input name="maximum-price" autoComplete="off" inputMode="decimal" aria-label={t("listings.maximumPrice")} value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="∞" /></fieldset>
+                <label className={styles.inlineCheck} title={!canFilterStickers ? t("listings.filtersUnsupported") : undefined}><input name="has-stickers" type="checkbox" checked={hasStickers} disabled={!canFilterStickers && !hasStickers} onChange={(event) => setHasStickers(event.target.checked)} />{t("listings.stickers")}</label>
+                <label className={styles.inlineCheck} title={!canFilterCharms ? t("listings.filtersUnsupported") : undefined}><input name="has-charm" type="checkbox" checked={hasCharm} disabled={!canFilterCharms && !hasCharm} onChange={(event) => setHasCharm(event.target.checked)} />{t("listings.charms")}</label>
                 <button className={styles.primaryButton} type="button" onClick={applyFilters}>{t("common.apply")}</button>
                 <button className={styles.secondaryButton} type="button" onClick={resetFilters}>{t("common.reset")}</button>
               </section>
@@ -156,7 +158,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
               <aside className={styles.detailAside}>
                 <button className={styles.backButton} type="button" onClick={() => setSelectedListing(null)}>← {t("analytics.backToListings")}</button>
                 <span className={styles.eyebrow}>{t("analytics.selectedListing")}</span><Dialog.Title>{selectedListing.market_hash_name}</Dialog.Title>
-                <div className={styles.detailImage}><img src={selectedListing.image_url ?? skin.image_url ?? ""} alt="" /></div>
+                <div className={styles.detailImage}><img src={selectedListing.image_url ?? skin.image_url ?? ""} alt="" width="400" height="224" /></div>
                 <strong className={styles.detailPrice}>{formatUsd(selectedListing.price_cents, locale)}</strong>
                 <dl className={styles.facts}><div><dt>Float</dt><dd>{selectedListing.float_value?.toFixed(8) ?? "—"}</dd></div><div><dt>Seed</dt><dd>{selectedListing.paint_seed ?? "—"}</dd></div><div><dt>{t("analytics.market")}</dt><dd>{marketplaces.find((item) => item.id === selectedListing.marketplace_id)?.display_name ?? selectedListing.marketplace_id}</dd></div></dl>
                 <AttachmentRow items={selectedListing.stickers} label={t("attachments.sticker")} locale={locale} />
@@ -169,8 +171,31 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                 {selectedDetails && <ListingSnapshotStatus snapshot={selectedDetails} locale={locale} />}
                 {selectedDetails && <DetailComponentStatus details={selectedDetails} component={detailComponentForTab(tab)} locale={locale} />}
                 {selectedDetails?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
-                <nav className={styles.analyticsTabs} role="tablist">{(["history", "active", "quick", "compare"] as Tab[]).map((item) => <button role="tab" aria-selected={tab === item} className={tab === item ? styles.activeTab : ""} type="button" key={item} onClick={() => setTab(item)}>{t(item === "history" && analyticsMarket === "csmoney" ? "analytics.wikiTradePriceHistory" : `analytics.${item}`)}</button>)}</nav>
+                <nav
+                  className={styles.analyticsTabs}
+                  role="tablist"
+                  aria-label={t("analytics.title")}
+                  aria-orientation="horizontal"
+                  style={{ "--active-index": activeTabIndex } as CSSProperties}
+                  onKeyDown={(event) => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    event.preventDefault();
+                    const nextIndex = event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? analyticsTabs.length - 1
+                        : (activeTabIndex + (event.key === "ArrowRight" ? 1 : -1) + analyticsTabs.length) % analyticsTabs.length;
+                    const nextTab = analyticsTabs[nextIndex];
+                    if (!nextTab) return;
+                    setTab(nextTab);
+                    event.currentTarget.querySelector<HTMLButtonElement>(`#analytics-tab-${nextTab}`)?.focus();
+                  }}
+                >
+                  <span className={styles.tabIndicator} aria-hidden="true" />
+                  {analyticsTabs.map((item) => <button id={`analytics-tab-${item}`} role="tab" aria-controls={`analytics-panel-${item}`} aria-selected={tab === item} tabIndex={tab === item ? 0 : -1} className={tab === item ? styles.activeTab : ""} type="button" key={item} onClick={() => setTab(item)}>{t(item === "history" && analyticsMarket === "csmoney" ? "analytics.wikiTradePriceHistory" : `analytics.${item}`)}</button>)}
+                </nav>
                 {detailQueries.some((item) => item.isLoading) && !selectedDetails && <div className={styles.emptyState}>{t("common.loading")}</div>}
+                <div className={styles.tabContent} key={tab} id={`analytics-panel-${tab}`} role="tabpanel" aria-labelledby={`analytics-tab-${tab}`} tabIndex={0}>
                 {tab === "history" && <section className={styles.analyticsSection}>
                   <div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(selectedDetails?.overview?.price_cents, locale)} /><Metric label={t("analytics.bestBid")} value={formatUsd(selectedQuickSell?.best_price_cents, locale)} /><Metric label={t("analytics.liquidity")} value={selectedDetails?.stats?.liquidity_score == null ? "—" : `${selectedDetails.stats.liquidity_score}/100`} /><Metric label={t("analytics.salesDay")} value={formatNumber(selectedDetails?.stats?.sales_per_day, locale)} /></div>
                   {analyticsMarket === "csmoney" && selectedListing.variant_id ? <WikiTradeHistory variantId={selectedListing.variant_id} locale={locale} /> : <>
@@ -182,6 +207,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                 {tab === "active" && <section className={styles.analyticsSection}><div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(selectedDetails?.overview?.price_cents, locale)} /><Metric label={t("listings.title")} value={String(selectedDetails?.overview?.active_listings ?? selectedDetails?.listings?.length ?? "—")} /></div><DataTable headers={[t("analytics.price"), "Float", "Seed", t("analytics.attachments")]} rows={(selectedDetails?.listings ?? []).map((item) => [formatUsd(item.price_cents, locale), item.float_value?.toFixed(8) ?? "—", String(item.paint_seed ?? "—"), <AttachmentPreview listing={item} compact locale={locale} />])} /></section>}
                 {tab === "quick" && <section className={styles.analyticsSection}>{!selectedCapability?.supports_quick_sell ? <div className={styles.emptyState}>{t("analytics.quickUnavailable")}</div> : <><div className={styles.metricGrid}><Metric label={t("analytics.bestBid")} value={formatUsd(selectedQuickSell?.best_price_cents, locale)} /><Metric label={t("analytics.bidDepth")} value={String(selectedQuickSell?.near_bid_depth ?? "—")} /></div>{listingQuickSellQuery.isLoading && analyticsMarket === "csfloat" && <p className={styles.sourceNote}>{t("common.loading")}</p>}<DataTable headers={[t("analytics.price"), t("analytics.quantity"), t("analytics.conditions")]} rows={(selectedQuickSell?.orders ?? []).map((order) => [formatUsd(order.price_cents, locale), String(order.quantity), order.min_float == null && order.max_float == null ? "—" : `${order.min_float ?? 0}–${order.max_float ?? 1}`])} /><p className={styles.sourceNote}>{selectedQuickSell?.note}</p></>}</section>}
                 {tab === "compare" && <ComparePanel marketplaces={analyticsMarkets} details={detailsByMarket} comparison={selectedComparison} selectedListing={selectedListing} selectedListingStale={selectedListingStale} listingQuickSell={listingQuickSellQuery.data} buy={compareBuy} sell={compareSell} onBuy={setCompareBuy} onSell={setCompareSell} onSwap={() => { setCompareBuy(compareSell); setCompareSell(compareBuy); }} locale={locale} />}
+                </div>
               </main>
             </div>
           )}
@@ -251,12 +277,12 @@ function DetailComponentStatus({ details, component, locale }: { details: Market
 
 function ListingCard({ listing, marketplaceName, fallbackImage, locale, onClick }: { listing: Listing; marketplaceName: string; fallbackImage?: string | null; locale: string; onClick: () => void }) {
   const { t } = useTranslation();
-  return <button className={styles.listingCard} type="button" onClick={onClick}><div className={styles.listingChips}><span className={styles.listingMarketplace}>{marketplaceName}</span><span>{listing.wear_name ? wearCodes[listing.wear_name] ?? listing.wear_name : "—"}</span>{listing.stattrak && <span>StatTrak™</span>}{listing.souvenir && <span>Souvenir</span>}{Boolean(listing.charms?.length) && <span>Charm</span>}</div><img src={listing.image_url ?? fallbackImage ?? ""} alt="" /><AttachmentPreview listing={listing} compact locale={locale} /><div className={styles.listingBottom}><strong>{formatUsd(listing.price_cents, locale)}</strong><span>Float {listing.float_value?.toFixed(6) ?? "—"}</span>{listing.predicted_price_cents && <small>{t("listings.estimate", { price: formatUsd(listing.predicted_price_cents, locale) })}</small>}</div></button>;
+  return <button className={styles.listingCard} type="button" onClick={onClick}><div className={styles.listingChips}><span className={styles.listingMarketplace}>{marketplaceName}</span><span>{listing.wear_name ? wearCodes[listing.wear_name] ?? listing.wear_name : "—"}</span>{listing.stattrak && <span>StatTrak™</span>}{listing.souvenir && <span>Souvenir</span>}{Boolean(listing.charms?.length) && <span>Charm</span>}</div><img src={listing.image_url ?? fallbackImage ?? ""} alt="" width="280" height="180" loading="lazy" /><AttachmentPreview listing={listing} compact locale={locale} /><div className={styles.listingBottom}><strong>{formatUsd(listing.price_cents, locale)}</strong><span>Float {listing.float_value?.toFixed(6) ?? "—"}</span>{listing.predicted_price_cents && <small>{t("listings.estimate", { price: formatUsd(listing.predicted_price_cents, locale) })}</small>}</div></button>;
 }
 function AttachmentRow({ items, label, locale }: { items?: Listing["stickers"]; label: string; locale: string }) {
   const { t } = useTranslation();
   if (!items?.length) return null;
-  return <div className={styles.attachmentList}>{items.map((item, index) => { const name = item.name ?? label; const tooltip = attachmentTooltip(name, item.csfloat_price_cents, locale, t("attachments.referencePrice"), t("attachments.priceUnavailable")); return <div title={tooltip} key={`${item.name}-${index}`}>{item.icon_url && <img src={item.icon_url} alt="" />}<span><strong>{name}</strong><small>{item.csfloat_price_cents == null ? t("attachments.priceUnavailable") : formatUsd(item.csfloat_price_cents, locale)}</small></span></div>; })}</div>;
+  return <div className={styles.attachmentList}>{items.map((item, index) => { const name = item.name ?? label; const tooltip = attachmentTooltip(name, item.csfloat_price_cents, locale, t("attachments.referencePrice"), t("attachments.priceUnavailable")); return <div title={tooltip} key={`${item.name}-${index}`}>{item.icon_url && <img src={item.icon_url} alt="" width="40" height="40" loading="lazy" />}<span><strong>{name}</strong><small>{item.csfloat_price_cents == null ? t("attachments.priceUnavailable") : formatUsd(item.csfloat_price_cents, locale)}</small></span></div>; })}</div>;
 }
 function AttachmentPreview({ listing, compact = false, locale = "en-US" }: { listing: Listing; compact?: boolean; locale?: string }) {
   const { t } = useTranslation();
@@ -265,7 +291,7 @@ function AttachmentPreview({ listing, compact = false, locale = "en-US" }: { lis
     ...(listing.charms ?? []).map((item) => ({ ...item, kind: "C" })),
   ].slice(0, compact ? 5 : 8);
   if (!attachments.length) return <span className={styles.noAttachments}>—</span>;
-  return <div className={styles.attachments}>{attachments.map((item, index) => { const name = item.name ?? t(item.kind === "C" ? "attachments.charm" : "attachments.sticker"); const tooltip = attachmentTooltip(name, item.csfloat_price_cents, locale, t("attachments.referencePrice"), t("attachments.priceUnavailable")); return <span className={`${styles.attachmentTooltip} ${item.kind === "C" ? styles.charmBadge : styles.stickerBadge}`} data-tooltip={tooltip} title={tooltip} key={`${item.kind}-${index}`}>{item.icon_url ? <img className={item.kind === "C" ? styles.charmIcon : undefined} src={item.icon_url} alt="" /> : item.kind}</span>; })}</div>;
+  return <div className={styles.attachments}>{attachments.map((item, index) => { const name = item.name ?? t(item.kind === "C" ? "attachments.charm" : "attachments.sticker"); const tooltip = attachmentTooltip(name, item.csfloat_price_cents, locale, t("attachments.referencePrice"), t("attachments.priceUnavailable")); return <span className={`${styles.attachmentTooltip} ${item.kind === "C" ? styles.charmBadge : styles.stickerBadge}`} data-tooltip={tooltip} title={tooltip} key={`${item.kind}-${index}`}>{item.icon_url ? <img className={item.kind === "C" ? styles.charmIcon : undefined} src={item.icon_url} alt="" width="36" height="36" loading="lazy" /> : item.kind}</span>; })}</div>;
 }
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) { return <div className={`${styles.metric} ${tone === "positive" ? styles.metricPositive : tone === "negative" ? styles.metricNegative : ""}`}><span>{label}</span><strong>{value}</strong></div>; }
 function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) { return rows.length ? <div className={styles.tableWrap}><table><thead><tr>{headers.map((item) => <th key={item}>{item}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div> : <div className={styles.emptyState}>—</div>; }
@@ -316,13 +342,13 @@ function ComparePanel({ marketplaces, details, comparison, selectedListing, sele
 
   return <section className={styles.comparePanel}>
     <div className={styles.compareControls}>
-      <label><span>{t("analytics.buy")}</span><select value={buy} onChange={(event) => onBuy(event.target.value)}>{buyOptions.map((item) => <option value={item.id} key={item.id}>{item.display_name}</option>)}</select></label>
+      <label><span>{t("analytics.buy")}</span><select name="compare-buy-marketplace" value={buy} onChange={(event) => onBuy(event.target.value)}>{buyOptions.map((item) => <option value={item.id} key={item.id}>{item.display_name}</option>)}</select></label>
       <button type="button" className={styles.swapButton} onClick={onSwap} aria-label={t("profit.swap")}>⇄</button>
-      <label><span>{t("analytics.sell")}</span><select value={sell} onChange={(event) => onSell(event.target.value)}>{sellOptions.map((item) => <option value={item.id} key={item.id}>{item.display_name}</option>)}</select></label>
+      <label><span>{t("analytics.sell")}</span><select name="compare-sell-marketplace" value={sell} onChange={(event) => onSell(event.target.value)}>{sellOptions.map((item) => <option value={item.id} key={item.id}>{item.display_name}</option>)}</select></label>
     </div>
     <div className={styles.compareOptions}>
-      <label><span>{t("profit.mode")}</span><select value={mode} onChange={(event) => setMode(event.target.value as Exclude<ProfitMode, "custom">)}>{(["raw", "smart", "enhanced", "quick_flip"] as const).map((item) => <option value={item} key={item}>{t(`profit.${item}`)}</option>)}</select></label>
-      <label><span>{t("calculator.sellType")}</span><select value={effectiveSellMode} disabled={mode === "quick_flip"} onChange={(event) => setSellMode(event.target.value as SellMode)}><option value="listing">{t("calculator.listing")}</option><option value="fast_buy" disabled={!sellConfig?.capabilities.supports_quick_sell}>{t("calculator.fastBuy")}</option></select></label>
+      <label><span>{t("profit.mode")}</span><select name="compare-profit-mode" value={mode} onChange={(event) => setMode(event.target.value as Exclude<ProfitMode, "custom">)}>{(["raw", "smart", "enhanced", "quick_flip"] as const).map((item) => <option value={item} key={item}>{t(`profit.${item}`)}</option>)}</select></label>
+      <label><span>{t("calculator.sellType")}</span><select name="compare-sell-mode" value={effectiveSellMode} disabled={mode === "quick_flip"} onChange={(event) => setSellMode(event.target.value as SellMode)}><option value="listing">{t("calculator.listing")}</option><option value="fast_buy" disabled={!sellConfig?.capabilities.supports_quick_sell}>{t("calculator.fastBuy")}</option></select></label>
     </div>
     <div className={styles.comparePreviews}>
       <ComparisonPreview title={t("analytics.buyPreview")} marketplace={buyConfig?.display_name ?? buy} listing={buyPreview} fallbackImage={selectedListing.image_url} price={buyQuote} locale={locale} />
@@ -345,7 +371,7 @@ function wikiMarketSummaryNote(locale: string) {
 }
 
 function ComparisonPreview({ title, marketplace, listing, fallbackImage, price, locale }: { title: string; marketplace: string; listing?: Listing; fallbackImage?: string | null; price?: number | null; locale: string }) {
-  return <article className={styles.comparePreview}><div><span>{title}</span><strong>{marketplace}</strong></div><img src={listing?.image_url ?? fallbackImage ?? ""} alt="" /><strong>{formatUsd(price, locale)}</strong>{listing ? <AttachmentPreview listing={listing} locale={locale} /> : <span className={styles.noAttachments}>—</span>}</article>;
+  return <article className={styles.comparePreview}><div><span>{title}</span><strong>{marketplace}</strong></div><img src={listing?.image_url ?? fallbackImage ?? ""} alt="" width="288" height="192" loading="lazy" /><strong>{formatUsd(price, locale)}</strong>{listing ? <AttachmentPreview listing={listing} locale={locale} /> : <span className={styles.noAttachments}>—</span>}</article>;
 }
 
 function filterSalesByPeriod(sales: Sale[], period: HistoryPeriod) {

@@ -16,6 +16,31 @@ if (-not (Test-Path ".env")) {
     exit 1
 }
 
+# Keep existing local databases usable when .env predates the POSTGRES_* fields.
+# Process-level variables take precedence in Docker Compose and are not written
+# back to disk or printed to the terminal.
+$envLines = Get-Content ".env"
+$databaseUrlLine = $envLines | Where-Object { $_ -match '^\s*DATABASE_URL\s*=\s*(.+)\s*$' } | Select-Object -First 1
+$hasPostgresUser = $envLines | Where-Object { $_ -match '^\s*POSTGRES_USER\s*=\s*[^#\s].*$' }
+$hasPostgresPassword = $envLines | Where-Object { $_ -match '^\s*POSTGRES_PASSWORD\s*=\s*[^#\s].*$' }
+$hasPostgresDb = $envLines | Where-Object { $_ -match '^\s*POSTGRES_DB\s*=\s*[^#\s].*$' }
+
+if ($databaseUrlLine -and (-not $hasPostgresUser -or -not $hasPostgresPassword -or -not $hasPostgresDb)) {
+    $databaseUrl = ($databaseUrlLine -replace '^\s*DATABASE_URL\s*=\s*', '').Trim()
+    try {
+        $databaseUri = [System.Uri]$databaseUrl
+        $credentials = $databaseUri.UserInfo.Split(':', 2)
+        if ($credentials.Count -eq 2) {
+            if (-not $hasPostgresUser) { $env:POSTGRES_USER = [System.Uri]::UnescapeDataString($credentials[0]) }
+            if (-not $hasPostgresPassword) { $env:POSTGRES_PASSWORD = [System.Uri]::UnescapeDataString($credentials[1]) }
+            if (-not $hasPostgresDb) { $env:POSTGRES_DB = $databaseUri.AbsolutePath.TrimStart('/') }
+        }
+    }
+    catch {
+        throw "DATABASE_URL in .env is invalid. Add POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD explicitly."
+    }
+}
+
 $hasCsfloatKey = Get-Content ".env" | Where-Object {
     $_ -match '^\s*CSFLOAT_API_KEY\s*=\s*[^#\s].*$'
 }

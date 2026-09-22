@@ -1,7 +1,8 @@
 {
-  "app": { "name": "trueROI", "homeLabel": "Главная trueROI", "navigationLabel": "Основная навигация", "online": "API доступен", "offline": "API недоступен", "skins": "Предметов: {{count}}" },
+  "app": { "name": "trueROI", "homeLabel": "Главная trueROI", "navigationLabel": "Основная навигация", "online": "API доступен", "offline": "API недоступен", "skins": "Предметов: {{count}}", "skipToContent": "Перейти к содержимому", "footer": "Аналитика рынка CS2 без лишнего шума" },
   "navigation": { "catalog": "Рынок", "calculator": "Калькулятор профита" },
   "language": { "switchLabel": "Переключить язык на {{language}}" },
+  "theme": { "useLight": "Включить светлую тему", "useDark": "Включить тёмную тему" },
   "common": { "loading": "Загрузка…", "retry": "Повторить", "reset": "Сбросить", "apply": "Применить", "close": "Закрыть", "back": "Назад", "noData": "Нет данных", "open": "Открыть площадку", "cached": "Данные из кеша", "live": "Актуальные данные", "all": "Все", "custom": "Настроенный" },
   "catalog": {
     "eyebrow": "АНАЛИТИКА РЫНКА CS2", "title": "Найдите разницу. Посчитайте реальную прибыль.",
@@ -31,7 +32,7 @@
   },
   "listings": {
     "title": "Активные лоты", "subtitle": "{{wear}} · {{market}}", "marketplace": "Площадка", "sort": "Сортировка", "bestDeal": "Лучшая сделка", "lowest": "Сначала дешевле",
-    "variant": "Вариант", "normal": "Обычный", "stattrak": "StatTrak™", "souvenir": "Souvenir", "float": "Диапазон float", "price": "Диапазон цены, USD",
+    "variant": "Вариант", "normal": "Обычный", "stattrak": "StatTrak™", "souvenir": "Souvenir", "float": "Диапазон float", "price": "Диапазон цены, USD", "minimumFloat": "Минимальный float", "maximumFloat": "Максимальный float", "minimumPrice": "Минимальная цена", "maximumPrice": "Максимальная цена",
     "stickers": "Есть наклейки", "charms": "Есть charm", "show": "Показать лоты", "count": "Лотов: {{count}}", "none": "Нет лотов, соответствующих фильтрам.",
     "allMarketplaces": "Все доступные площадки", "subtitleAll": "{{wear}} · все доступные площадки", "marketHeading": "Лоты на {{market}}", "noMarketplaces": "Сейчас ни одна площадка не поддерживает активные лоты для этого предмета.", "noneOnMarket": "На {{market}} нет активных лотов с такими фильтрами.",
     "filterUnsupportedTitle": "Фильтр недоступен", "filterUnsupportedMarket": "{{market}} не умеет применять: {{filters}}. Результаты других площадок остаются видимыми.", "providerError": "{{market}} временно недоступен", "providerErrorHint": "Остальные площадки продолжат работать. Этот источник можно повторить отдельно.", "paintIndexUnavailableTitle": "Для предмета недоступен поиск по paint index", "paintIndexUnavailable": "Для поиска лотов на {{market}} требуется paint index. Попробуйте другую площадку из списка.",

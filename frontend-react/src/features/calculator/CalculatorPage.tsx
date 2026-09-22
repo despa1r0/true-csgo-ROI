@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -35,6 +35,8 @@ export function CalculatorPage() {
   const [variantId, setVariantId] = useState<string | null>(searchParams.get("variant"));
   const [referenceAtSubmit, setReferenceAtSubmit] = useState<number | null>(null);
   const [riskVariantAtSubmit, setRiskVariantAtSubmit] = useState<string | null>(null);
+  const buyPriceRef = useRef<HTMLInputElement>(null);
+  const sellPriceRef = useRef<HTMLInputElement>(null);
   const locale = i18n.resolvedLanguage === "ru" ? "ru-RU" : "en-US";
 
   useEffect(() => { const timer = window.setTimeout(() => setDebouncedSearch(skinSearch.trim()), 280); return () => window.clearTimeout(timer); }, [skinSearch]);
@@ -83,7 +85,12 @@ export function CalculatorPage() {
   function selectSkin(result: CatalogueSearchResult) { setSkinId(result.id); setVariantId(null); setSkinSearch(result.name); }
   function setPreset(next: ProfitMode) { setMode(next); if (next !== "custom") { setFees(presetFlags[next]); setSellMode(next === "quick_flip" ? "fast_buy" : "listing"); } }
   function toggleFee(key: keyof FeeFlags) { if (!(mode === "quick_flip" && key === "deposit")) setMode("custom"); setFees((current) => ({ ...current, [key]: !current[key] })); }
-  function submit(event: React.FormEvent) { event.preventDefault(); if (buyCents != null && sellCents != null && buyMarket && sellMarket) { setReferenceAtSubmit(buyReference ?? null); setRiskVariantAtSubmit(selectedVariant?.variant_id ?? null); calculation.mutate(calculationRequest(buyCents)); } }
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (buyCents == null) { buyPriceRef.current?.focus(); return; }
+    if (sellCents == null) { sellPriceRef.current?.focus(); return; }
+    if (buyMarket && sellMarket) { setReferenceAtSubmit(buyReference ?? null); setRiskVariantAtSubmit(selectedVariant?.variant_id ?? null); calculation.mutate(calculationRequest(buyCents)); }
+  }
   function useReference(type: "buy" | "sell") { const cents = type === "buy" ? buyReference : sellReference; if (cents != null) (type === "buy" ? setBuyPrice : setSellPrice)((cents / 100).toFixed(2)); }
   function swap() { const oldBuy = buyMarket; setBuyMarket(sellMarket); setSellMarket(oldBuy); }
   const savings = buyReference != null && buyCents != null ? buyReference - buyCents : null;
@@ -95,37 +102,37 @@ export function CalculatorPage() {
   return <div className={styles.page}>
     <header className={styles.hero}><span>{t("calculator.eyebrow")}</span><h1>{t("calculator.title")}</h1><p>{t("calculator.subtitle")}</p></header>
     <section className={styles.skinReference}>
-      <div className={styles.searchWrap}><label htmlFor="calculator-skin-search">{t("calculator.optionalSkin")}</label><input id="calculator-skin-search" type="search" value={skinSearch} onChange={(event) => setSkinSearch(event.target.value)} placeholder={t("calculator.skinPlaceholder")} />{debouncedSearch.length >= 2 && skinSearch !== skinQuery.data?.name && <div className={styles.suggestions}>{skinSearchQuery.data?.map((item) => <button type="button" key={item.id} onClick={() => selectSkin(item)}><img src={item.image_url ?? ""} alt="" /><span><strong>{item.name}</strong><small>{item.weapon_name}</small></span></button>)}</div>}</div>
-      {skinQuery.data ? <div className={styles.selectedSkin}><img src={skinQuery.data.image_url ?? ""} alt="" /><div><span>{t("calculator.marketReference")}</span><strong>{skinQuery.data.name}</strong><select aria-label={t("calculator.variant")} value={selectedVariant?.variant_id ?? ""} onChange={(event) => setVariantId(event.target.value)}>{comparisonQuery.data?.variants.map((item) => <option value={item.variant_id} key={item.variant_id}>{item.market_hash_name}</option>)}</select></div><button type="button" onClick={() => { setSkinId(null); setVariantId(null); setSkinSearch(""); }}>{t("calculator.clearSkin")}</button></div> : <p className={styles.referenceHint}>{t("calculator.noReference")}</p>}
+      <div className={styles.searchWrap}><label htmlFor="calculator-skin-search">{t("calculator.optionalSkin")}</label><input id="calculator-skin-search" name="calculator-skin-search" autoComplete="off" type="search" value={skinSearch} onChange={(event) => setSkinSearch(event.target.value)} placeholder={t("calculator.skinPlaceholder")} />{debouncedSearch.length >= 2 && skinSearch !== skinQuery.data?.name && <div className={styles.suggestions}>{skinSearchQuery.data?.map((item) => <button type="button" key={item.id} onClick={() => selectSkin(item)}><img src={item.image_url ?? ""} alt="" width="112" height="80" loading="lazy" /><span><strong>{item.name}</strong><small>{item.weapon_name}</small></span></button>)}</div>}</div>
+      {skinQuery.data ? <div className={styles.selectedSkin}><img src={skinQuery.data.image_url ?? ""} alt="" width="160" height="128" /><div><span>{t("calculator.marketReference")}</span><strong>{skinQuery.data.name}</strong><select name="skin-variant" aria-label={t("calculator.variant")} value={selectedVariant?.variant_id ?? ""} onChange={(event) => setVariantId(event.target.value)}>{comparisonQuery.data?.variants.map((item) => <option value={item.variant_id} key={item.variant_id}>{item.market_hash_name}</option>)}</select></div><button type="button" onClick={() => { setSkinId(null); setVariantId(null); setSkinSearch(""); }}>{t("calculator.clearSkin")}</button></div> : <p className={styles.referenceHint}>{t("calculator.noReference")}</p>}
     </section>
 
     <form className={styles.calculatorGrid} onSubmit={submit}>
       <section className={styles.formPanel}>
         <div className={styles.priceGrid}>
-          <label><span>{t("calculator.buyPrice")}, USD</span><input inputMode="decimal" value={buyPrice} onChange={(event) => setBuyPrice(event.target.value)} aria-invalid={buyCents == null} /><small>{buyReference == null ? t("calculator.manual") : `${t("calculator.marketReference")}: ${formatUsd(buyReference, locale)}`}</small>{buyReference != null && <button type="button" onClick={() => useReference("buy")}>{t("calculator.useQuote", { price: formatUsd(buyReference, locale) })}</button>}</label>
+          <label><span>{t("calculator.buyPrice")}, USD</span><input ref={buyPriceRef} name="buy-price" autoComplete="off" inputMode="decimal" value={buyPrice} onChange={(event) => setBuyPrice(event.target.value)} aria-invalid={buyCents == null} aria-describedby={buyCents == null ? "money-error" : undefined} /><small>{buyReference == null ? t("calculator.manual") : `${t("calculator.marketReference")}: ${formatUsd(buyReference, locale)}`}</small>{buyReference != null && <button type="button" onClick={() => useReference("buy")}>{t("calculator.useQuote", { price: formatUsd(buyReference, locale) })}</button>}</label>
           <div className={styles.direction}>→</div>
-          <label><span>{t("calculator.sellPrice")}, USD</span><input inputMode="decimal" value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} aria-invalid={sellCents == null} /><small>{sellReference == null ? t("calculator.manual") : `${t("calculator.marketReference")}: ${formatUsd(sellReference, locale)}`}</small>{sellReference != null && <button type="button" onClick={() => useReference("sell")}>{t("calculator.useQuote", { price: formatUsd(sellReference, locale) })}</button>}</label>
+          <label><span>{t("calculator.sellPrice")}, USD</span><input ref={sellPriceRef} name="sell-price" autoComplete="off" inputMode="decimal" value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} aria-invalid={sellCents == null} aria-describedby={sellCents == null ? "money-error" : undefined} /><small>{sellReference == null ? t("calculator.manual") : `${t("calculator.marketReference")}: ${formatUsd(sellReference, locale)}`}</small>{sellReference != null && <button type="button" onClick={() => useReference("sell")}>{t("calculator.useQuote", { price: formatUsd(sellReference, locale) })}</button>}</label>
         </div>
-        {(buyCents == null || sellCents == null) && <p className={styles.error}>{t("calculator.invalidMoney")}</p>}
+        {(buyCents == null || sellCents == null) && <p className={styles.error} id="money-error">{t("calculator.invalidMoney")}</p>}
         {savings != null && savings > 0 && <p className={styles.savings}>{t("calculator.savings", { amount: formatUsd(savings, locale), percent: savingsPercent?.toFixed(2) })}</p>}
         <div className={styles.marketGrid}>
-          <label><span>{t("calculator.buyMarket")}</span><select value={buyMarket} onChange={(event) => setBuyMarket(event.target.value)}>{buyOptions.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label>
+          <label><span>{t("calculator.buyMarket")}</span><select name="calculator-buy-marketplace" value={buyMarket} onChange={(event) => setBuyMarket(event.target.value)}>{buyOptions.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label>
           <button className={styles.swap} type="button" onClick={swap} aria-label={t("profit.swap")}>⇄</button>
-          <label><span>{t("calculator.sellMarket")}</span><select value={sellMarket} onChange={(event) => setSellMarket(event.target.value)}>{eligibleSellOptions.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label>
+          <label><span>{t("calculator.sellMarket")}</span><select name="calculator-sell-marketplace" value={sellMarket} onChange={(event) => setSellMarket(event.target.value)}>{eligibleSellOptions.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label>
         </div>
         <div className={styles.optionsGrid}>
-          <label><span>{t("profit.mode")}</span><select value={mode} onChange={(event) => setPreset(event.target.value as ProfitMode)}>{(["raw", "smart", "enhanced", "quick_flip", "custom"] as ProfitMode[]).map((item) => <option value={item} key={item}>{t(item === "custom" ? "common.custom" : `profit.${item}`)}</option>)}</select></label>
-          <label><span>{t("profit.deposit")}</span><select value={depositMethod} onChange={(event) => setDepositMethod(event.target.value as PaymentMethod)}>{(buyConfig?.deposit_methods ?? ["crypto"]).map((item) => <option value={item} key={item}>{t(`profit.${item}`)}</option>)}</select></label>
-          <label><span>{t("profit.withdraw")}</span><select value={withdrawMethod} onChange={(event) => setWithdrawMethod(event.target.value as PaymentMethod)}>{(sellConfig?.withdraw_methods ?? ["crypto"]).map((item) => <option value={item} key={item}>{t(`profit.${item}`)}</option>)}</select></label>
-          <label><span>{t("calculator.sellType")}</span><select value={sellMode} onChange={(event) => setSellMode(event.target.value as SellMode)}><option value="listing">{t("calculator.listing")}</option><option value="fast_buy" disabled={!sellConfig?.capabilities.supports_quick_sell}>{t("calculator.fastBuy")}</option></select></label>
+          <label><span>{t("profit.mode")}</span><select name="calculator-profit-mode" value={mode} onChange={(event) => setPreset(event.target.value as ProfitMode)}>{(["raw", "smart", "enhanced", "quick_flip", "custom"] as ProfitMode[]).map((item) => <option value={item} key={item}>{t(item === "custom" ? "common.custom" : `profit.${item}`)}</option>)}</select></label>
+          <label><span>{t("profit.deposit")}</span><select name="calculator-deposit-method" value={depositMethod} onChange={(event) => setDepositMethod(event.target.value as PaymentMethod)}>{(buyConfig?.deposit_methods ?? ["crypto"]).map((item) => <option value={item} key={item}>{t(`profit.${item}`)}</option>)}</select></label>
+          <label><span>{t("profit.withdraw")}</span><select name="calculator-withdraw-method" value={withdrawMethod} onChange={(event) => setWithdrawMethod(event.target.value as PaymentMethod)}>{(sellConfig?.withdraw_methods ?? ["crypto"]).map((item) => <option value={item} key={item}>{t(`profit.${item}`)}</option>)}</select></label>
+          <label><span>{t("calculator.sellType")}</span><select name="calculator-sell-mode" value={sellMode} onChange={(event) => setSellMode(event.target.value as SellMode)}><option value="listing">{t("calculator.listing")}</option><option value="fast_buy" disabled={!sellConfig?.capabilities.supports_quick_sell}>{t("calculator.fastBuy")}</option></select></label>
         </div>
         <fieldset className={styles.fees}><legend>{t("calculator.fees")}</legend><p>{t("calculator.feeLocked")}</p>
-          <FeeToggle checked={fees.deposit} disabled={mode !== "custom" && mode !== "quick_flip"} onChange={() => toggleFee("deposit")} title={t("calculator.depositFee")} rule={buyConfig?.fees.deposit[depositMethod]} />
-          <FeeToggle checked={fees.sell} disabled={mode !== "custom"} onChange={() => toggleFee("sell")} title={t("calculator.sellFee")} rule={sellConfig?.fees.sell} />
-          <FeeToggle checked={fees.withdraw} disabled={mode !== "custom"} onChange={() => toggleFee("withdraw")} title={t("calculator.withdrawFee")} rule={sellConfig?.fees.withdraw[withdrawMethod]} />
+          <FeeToggle name="deposit-fee" checked={fees.deposit} disabled={mode !== "custom" && mode !== "quick_flip"} onChange={() => toggleFee("deposit")} title={t("calculator.depositFee")} rule={buyConfig?.fees.deposit[depositMethod]} />
+          <FeeToggle name="sell-fee" checked={fees.sell} disabled={mode !== "custom"} onChange={() => toggleFee("sell")} title={t("calculator.sellFee")} rule={sellConfig?.fees.sell} />
+          <FeeToggle name="withdraw-fee" checked={fees.withdraw} disabled={mode !== "custom"} onChange={() => toggleFee("withdraw")} title={t("calculator.withdrawFee")} rule={sellConfig?.fees.withdraw[withdrawMethod]} />
         </fieldset>
-        <button className={styles.submit} type="submit" disabled={buyCents == null || sellCents == null || calculation.isPending}>{calculation.isPending ? t("common.loading") : t("calculator.calculate")}</button>
-        {calculation.isError && <p className={styles.error}>{calculation.error.message || t("calculator.serverError")}</p>}
+        <button className={styles.submit} type="submit" disabled={calculation.isPending}>{calculation.isPending ? t("common.loading") : t("calculator.calculate")}</button>
+        {calculation.isError && <p className={styles.error} role="status">{calculation.error.message || t("calculator.serverError")}</p>}
       </section>
 
       <section className={styles.resultPanel} aria-live="polite">
@@ -150,6 +157,6 @@ export function CalculatorPage() {
   </div>;
 }
 
-function FeeToggle({ checked, disabled, onChange, title, rule }: { checked: boolean; disabled: boolean; onChange: () => void; title: string; rule?: { percent: number; fixed_cents: number } | null }) { return <label><input type="checkbox" checked={checked} disabled={disabled} onChange={onChange} /><span>{title}</span><strong>{feeLabel(rule)}</strong></label>; }
+function FeeToggle({ name, checked, disabled, onChange, title, rule }: { name: string; checked: boolean; disabled: boolean; onChange: () => void; title: string; rule?: { percent: number; fixed_cents: number } | null }) { return <label><input name={name} type="checkbox" checked={checked} disabled={disabled} onChange={onChange} /><span>{title}</span><strong>{feeLabel(rule)}</strong></label>; }
 function ResultRow({ label, value }: { label: string; value: string }) { return <div className={styles.resultRow}><span>{label}</span><strong>{value}</strong></div>; }
 function ResultMetric({ label, value, note }: { label: string; value: string; note?: string }) { return <div><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>; }

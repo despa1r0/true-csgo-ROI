@@ -1,7 +1,8 @@
 {
-  "app": { "name": "trueROI", "homeLabel": "trueROI home", "navigationLabel": "Main navigation", "online": "API online", "offline": "API unavailable", "skins": "{{count}} items" },
+  "app": { "name": "trueROI", "homeLabel": "trueROI home", "navigationLabel": "Main navigation", "online": "API online", "offline": "API unavailable", "skins": "{{count}} items", "skipToContent": "Skip to content", "footer": "CS2 market intelligence without the noise" },
   "navigation": { "catalog": "Market", "calculator": "Profit calculator" },
   "language": { "switchLabel": "Switch language to {{language}}" },
+  "theme": { "useLight": "Use light theme", "useDark": "Use dark theme" },
   "common": { "loading": "Loading…", "retry": "Try again", "reset": "Reset", "apply": "Apply", "close": "Close", "back": "Back", "noData": "No data", "open": "Open marketplace", "cached": "Cached data", "live": "Current data", "all": "All", "custom": "Custom" },
   "catalog": {
     "eyebrow": "CS2 MARKET INTELLIGENCE", "title": "Find the spread. Calculate the real return.",
@@ -31,7 +32,7 @@
   },
   "listings": {
     "title": "Active listings", "subtitle": "{{wear}} · {{market}}", "marketplace": "Marketplace", "sort": "Sort", "bestDeal": "Best deal", "lowest": "Lowest price",
-    "variant": "Variant", "normal": "Normal", "stattrak": "StatTrak™", "souvenir": "Souvenir", "float": "Float range", "price": "Price range, USD",
+    "variant": "Variant", "normal": "Normal", "stattrak": "StatTrak™", "souvenir": "Souvenir", "float": "Float range", "price": "Price range, USD", "minimumFloat": "Minimum float", "maximumFloat": "Maximum float", "minimumPrice": "Minimum price", "maximumPrice": "Maximum price",
     "stickers": "Has stickers", "charms": "Has charm", "show": "Show listings", "count": "{{count}} listings", "none": "No listings match these filters.",
     "allMarketplaces": "All available marketplaces", "subtitleAll": "{{wear}} · all available marketplaces", "marketHeading": "Listings on {{market}}", "noMarketplaces": "No marketplace currently supports active listings for this item.", "noneOnMarket": "{{market}} returned no matching active listings.",
     "filterUnsupportedTitle": "Filter unavailable", "filterUnsupportedMarket": "{{market}} cannot apply: {{filters}}. Other marketplace results remain visible.", "providerError": "{{market}} is temporarily unavailable", "providerErrorHint": "The other marketplace results are unaffected. You can retry this source separately.", "paintIndexUnavailableTitle": "This item cannot be searched by paint index", "paintIndexUnavailable": "{{market}} requires a paint index for this listing search. Try another marketplace shown here.",

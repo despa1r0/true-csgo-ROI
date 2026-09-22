@@ -24,7 +24,7 @@ from .csgomarket import (
     get_sales_history,
 )
 from .database import get_connection
-from .market_data import LIQUIDITY_METHOD, calculate_liquidity
+from .analytics.liquidity import LIQUIDITY_METHOD, calculate_liquidity
 
 
 MARKETPLACE = "CSGO Market"

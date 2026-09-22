@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from ..catalog import get_skin
-from ..market_data import (
+from ..services.market_data import (
     get_csfloat_listing_quick_sell,
     get_csfloat_prices,
     get_csfloat_skin_listings,

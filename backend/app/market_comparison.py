@@ -13,8 +13,8 @@ from .csgomarket_data import (
 )
 from .csmoney_data import get_csmoney_prices
 from .database import get_connection
-from .market_data import (
-    calculate_liquidity,
+from .analytics.liquidity import calculate_liquidity
+from .services.market_data import (
     get_csfloat_prices,
     get_csfloat_variant_fast_buy,
     get_whitemarket_prices,

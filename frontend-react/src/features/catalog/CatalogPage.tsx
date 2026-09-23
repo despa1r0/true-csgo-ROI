@@ -8,6 +8,8 @@ import { formatUsd } from "@/shared/lib/format";
 import { ProfitSettings, type ProfitSettingsValue } from "./ProfitSettings";
 import { ListingDialog } from "./ListingDialog";
 import { FlipRiskNotice } from "./FlipRiskNotice";
+import { CsMoneyTextSearch } from "./CsMoneyTextSearch";
+import { shouldOfferCsMoneySearch } from "./shouldOfferCsMoneySearch";
 import { selectQualityCardMarketData } from "./qualityCard";
 import styles from "./market.module.css";
 
@@ -48,6 +50,9 @@ export function CatalogPage() {
     enabled: searchEnabled,
     staleTime: 300_000,
   });
+  const showCsMoneySearch = shouldOfferCsMoneySearch({ query, searchedQuery: debouncedQuery,
+    hasFilters: Object.values(filters).some(Boolean), searchComplete: searchQuery.isSuccess,
+    matches: searchQuery.data?.length ?? 0, selected: Boolean(selectedResult) });
   const skinQuery = useQuery({
     queryKey: ["skin", selectedResult?.id],
     queryFn: ({ signal }) => api.skinDetails(selectedResult!.id, signal),
@@ -107,6 +112,8 @@ export function CatalogPage() {
         </div>
         <p className={styles.searchHint}>{searchEnabled && searchQuery.data ? t("catalog.results", { count: searchQuery.data.length }) : t("catalog.searchHint")}</p>
       </section>
+
+      {showCsMoneySearch && <CsMoneyTextSearch key={debouncedQuery} query={debouncedQuery} />}
 
       <ProfitSettings value={profit} marketplaces={marketplaces} onChange={setProfit} />
 

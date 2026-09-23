@@ -296,6 +296,28 @@ export type SearchSkinsParams = {
   limit?: number;
 };
 
+export type CsMoneyTextSearchStatus = "queued" | "running" | "complete" | "empty" | "blocked" | "error" | "expired";
+export type CsMoneyTextListing = {
+  listing_id: string;
+  item_name: string;
+  price_cents: number;
+  item_url: string;
+  float_value: number | null;
+  paint_seed: number | null;
+  image_url: string | null;
+  phase: string | null;
+};
+export type CsMoneyTextSearch = {
+  request_id: string;
+  status: CsMoneyTextSearchStatus;
+  query?: string;
+  created_at?: string;
+  finished_at?: string | null;
+  expires_at?: string;
+  error?: string | null;
+  result?: { source_url: string; page_items: number; is_partial: boolean; listings: CsMoneyTextListing[] } | null;
+};
+
 export type ListingFilters = {
   sort_by?: ListingSort;
   wear?: WearId;

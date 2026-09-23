@@ -20,8 +20,10 @@ from .csmoney_data import (
 )
 from .csmoney_demand import get_observed_sales_priorities
 from .csmoney_wiki import WikiPriceError, fetch_market_summary
+from .csmoney_search import claim_search, finish_search
 from .database import ensure_schema, get_connection
-from .marketplaces.csmoney import CsMoneyRequestError, capture_variant, storefront_url
+from .marketplaces.csmoney import (CsMoneyBlockedError, CsMoneyRequestError,
+                                  capture_search, capture_variant, storefront_url)
 
 
 LOG = logging.getLogger(__name__)
@@ -96,6 +98,38 @@ def _wiki_summary(variant_id: str, context: dict) -> None:
               variant_id, summary["price_cents"] / 100, summary["quantity"])
 
 
+def process_search(page, *, circuit_open: bool = False) -> bool:
+    """Process the priority text queue on a fresh tab in the current context."""
+    job = claim_search()
+    if job is None:
+        return False
+    request_id = job["request_id"]
+    if circuit_open:
+        finish_search(request_id, "blocked", error="CS.MONEY storefront is temporarily blocked")
+        return True
+    tab = None
+    try:
+        tab = page.context.new_page()
+        capture = capture_search(tab, job["query"])
+        finish_search(request_id, "complete" if capture["listings"] else "empty",
+                      result=capture)
+    except CsMoneyBlockedError as error:
+        finish_search(request_id, "blocked", error=str(error))
+        raise
+    except CsMoneyRequestError as error:
+        finish_search(request_id, "error", error=str(error))
+    except Exception:
+        finish_search(request_id, "error", error="Search failed; inspect worker logs")
+        LOG.exception("Unexpected CS.MONEY search failure for %s", request_id)
+    finally:
+        if tab is not None:
+            try:
+                tab.close()
+            except Exception:
+                LOG.exception("Could not close CS.MONEY search tab for %s", request_id)
+    return True
+
+
 def process_one(page) -> bool:
     """Process one leased job; return false when there was no ready job."""
     job = claim_refresh_job()
@@ -123,7 +157,7 @@ def process_one(page) -> bool:
         stored = store_variant_capture(variant_id, capture)
     except CsMoneyRequestError as error:
         message = str(error)
-        if "403" in message:
+        if isinstance(error, CsMoneyBlockedError) or "403" in message or "429" in message:
             # Stop storefront requests globally while using the separate
             # public Wiki Market summary. One 403 is enough to trip the gate.
             try:
@@ -171,7 +205,7 @@ def run(*, once: bool = False) -> None:
             remaining = request_interval - (time.monotonic() - last_request)
             if last_request and remaining > 0:
                 time.sleep(remaining)
-            processed = process_one(None)
+            processed = process_search(None, circuit_open=True) or process_one(None)
             if processed:
                 last_request = time.monotonic()
             if once:
@@ -192,7 +226,7 @@ def run(*, once: bool = False) -> None:
                 if last_request and remaining > 0:
                     time.sleep(remaining)
                 try:
-                    processed = process_one(page)
+                    processed = process_search(page) or process_one(page)
                 except CsMoneyRequestError:
                     challenged = True
                     break
@@ -206,7 +240,7 @@ def run(*, once: bool = False) -> None:
             return
         if challenged:
             blocked_until = time.monotonic() + storefront_retry
-            LOG.warning("CS.MONEY storefront returned 403; using Wiki Market summaries for %ds",
+            LOG.warning("CS.MONEY storefront blocked; using Wiki Market summaries for %ds",
                         storefront_retry)
 
 

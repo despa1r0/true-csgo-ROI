@@ -267,6 +267,24 @@ select:focus:not(:focus-visible),
 .catalogFilters { align-items: start; }
 .catalogFilters label { min-width: 0; align-content: start; }
 .searchHint { grid-column: 1 / -1; min-height: 1rem; margin: .05rem .2rem 0; }
+.textSearch { padding: 1.2rem; border: 1px solid var(--color-border-strong); border-radius: 1rem; background: var(--color-surface); }
+.textSearchHead { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.textSearchHead > div { display: grid; gap: .25rem; }
+.textSearchHead small { color: var(--color-accent-primary); font-size: .68rem; font-weight: 800; letter-spacing: .12em; }
+.textSearchHead strong { font-size: 1.15rem; }
+.textSearchHead span, .textSearchStatus { color: var(--color-text-muted); font-size: .82rem; }
+.textSearchHead button { padding: .8rem 1.1rem; border: 0; border-radius: .7rem; background: var(--color-accent-primary); color: var(--color-background); font-weight: 800; cursor: pointer; }
+.textSearchHead button:disabled { opacity: .55; cursor: default; }
+.textSearchError { color: var(--color-negative, #d65c5c); }
+.textSearchListings { display: grid; gap: .45rem; margin-top: .9rem; }
+.textSearchListing { display: flex; align-items: center; gap: .75rem; min-width: 0; padding: .55rem .7rem; border: 1px solid var(--color-border-subtle); border-radius: .65rem; color: inherit; text-decoration: none; }
+.textSearchListing:hover { border-color: var(--color-accent-primary); }
+.textSearchListing img { flex: none; object-fit: contain; }
+.textSearchListing span { display: grid; gap: .2rem; min-width: 0; flex: 1; }
+.textSearchListing strong { overflow-wrap: anywhere; }
+.textSearchListing small { color: var(--color-text-muted); }
+.textSearchListing b { white-space: nowrap; }
+@media (max-width: 48rem) { .textSearchHead { align-items: stretch; flex-direction: column; } .textSearchListing { flex-wrap: wrap; } }
 
 /* A continuous segmented control makes analytics navigation feel spatial. */
 .analyticsTabs {

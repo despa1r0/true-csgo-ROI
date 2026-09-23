@@ -12,6 +12,7 @@
     "selected": "Selected skin", "conditions": "Wear conditions", "conditionsHint": "Choose a wear condition to inspect active listings.",
     "noConditions": "No variants match the selected filters.", "marketFrom": "From {{price}}", "noPrice": "No quote", "marketError": "Market comparison is temporarily unavailable.", "marketFeeds": "market feeds", "standard": "Standard item", "marketDataUnavailable": "This catalogue item has no marketable variant, so marketplace analytics are unavailable."
   },
+  "csmoneySearch": { "title": "No catalogue match", "note": "Search current CS.MONEY listings. These results are separate from ROI calculations.", "action": "Search CS.MONEY", "queued": "Search queued", "running": "Searching CS.MONEY", "complete": "Current listings", "empty": "No listings found on the first page", "blocked": "CS.MONEY has temporarily blocked searches", "error": "Search failed", "expired": "Search result expired", "firstPage": "Showing the first page of results; more listings may exist." },
   "catalogTypes": { "skin": "Skin", "case": "Case", "container": "Container", "capsule": "Capsule", "sticker": "Sticker", "sticker_slab": "Sticker slab", "charm": "Charm", "souvenir_charm": "Souvenir charm", "agent": "Agent", "souvenir_package": "Souvenir package", "collectible": "Collectible", "pin": "Pin", "music_kit": "Music kit", "music_kit_box": "Music kit box", "patch": "Patch", "graffiti": "Graffiti", "graffiti_box": "Graffiti box", "key": "Key", "tool": "Tool" },
   "flipRisk": {
     "score": "Liquidity {{score}}/100",

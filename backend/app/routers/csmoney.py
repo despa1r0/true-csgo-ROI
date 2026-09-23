@@ -1,8 +1,10 @@
 """HTTP routes for cached CS.MONEY data and Wiki price history."""
 
 from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from ..catalog import get_skin
 from ..csmoney_data import (
@@ -11,10 +13,35 @@ from ..csmoney_data import (
     get_csmoney_variant_details,
 )
 from ..csmoney_wiki import get_variant_price_history
+from ..csmoney_search import enqueue_search, get_search, normalize_query
+from ..catalog import search_skins
 from ._validation import validate_listing_ranges
 
 
 router = APIRouter()
+
+
+class TextSearchRequest(BaseModel):
+    query: str
+
+
+@router.post("/api/market/csmoney/search", status_code=202)
+def create_csmoney_search(request: TextSearchRequest):
+    try:
+        query, _normalized = normalize_query(request.query)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if search_skins(query, limit=1):
+        raise HTTPException(status_code=409, detail="Item already exists in the local catalogue")
+    return enqueue_search(query)
+
+
+@router.get("/api/market/csmoney/search/{request_id}")
+def csmoney_search_status(request_id: UUID):
+    result = get_search(request_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Search request not found")
+    return result
 
 
 @router.get("/api/skins/{skin_id}/market/csmoney")

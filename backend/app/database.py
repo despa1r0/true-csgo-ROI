@@ -215,6 +215,36 @@ def ensure_schema(connection: Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS csmoney_text_search_jobs (
+            request_id UUID PRIMARY KEY,
+            normalized_query TEXT NOT NULL,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            query TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN
+                ('queued', 'running', 'complete', 'empty', 'blocked', 'error')),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ NOT NULL,
+            lease_until TIMESTAMPTZ,
+            error TEXT,
+            result JSONB
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS csmoney_text_search_jobs_ready_idx "
+        "ON csmoney_text_search_jobs (status, created_at)"
+    )
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS csmoney_text_search_active_idx "
+        "ON csmoney_text_search_jobs (normalized_query) WHERE active"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS csmoney_text_search_expiry_idx "
+        "ON csmoney_text_search_jobs (expires_at) WHERE active"
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS csmoney_wiki_price_history (
             variant_id TEXT PRIMARY KEY REFERENCES skin_variants(id) ON DELETE CASCADE,
             points JSONB NOT NULL DEFAULT '[]'::JSONB,

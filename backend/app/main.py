@@ -13,6 +13,7 @@ from .csgomarket_data import (
     get_csgomarket_skin_listings,
     get_csgomarket_variant_details,
 )
+from .csmoney_data import get_csmoney_prices
 from .market_comparison import get_skin_market_comparison
 from .market_data import (
     get_csfloat_prices,
@@ -163,6 +164,13 @@ def skin_csgomarket_prices(skin_id: str):
     if get_skin(skin_id) is None:
         raise HTTPException(status_code=404, detail="Скин не найден")
     return get_csgomarket_prices(skin_id)
+
+
+@app.get("/api/skins/{skin_id}/market/csmoney")
+def skin_csmoney_prices(skin_id: str):
+    if get_skin(skin_id) is None:
+        raise HTTPException(status_code=404, detail="Скин не найден")
+    return get_csmoney_prices(skin_id)
 
 
 @app.get("/api/skins/{skin_id}/markets/compare")

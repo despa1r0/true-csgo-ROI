@@ -53,5 +53,19 @@ services:
       retries: 12
     restart: unless-stopped
 
+  csmoney-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      CSMONEY_HEADLESS: "true"
+      CSMONEY_WORKER_INTERVAL_SECONDS: ${CSMONEY_WORKER_INTERVAL_SECONDS:-600}
+      CSMONEY_PAGES_PER_RUN: ${CSMONEY_PAGES_PER_RUN:-400}
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   true_roi_postgres:

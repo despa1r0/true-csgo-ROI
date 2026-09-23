@@ -9,6 +9,7 @@ from .csgomarket_data import (
     get_csgomarket_prices,
     get_csgomarket_variant_fast_buy,
 )
+from .csmoney_data import get_csmoney_prices
 from .market_data import (
     get_csfloat_prices,
     get_csfloat_variant_fast_buy,
@@ -23,6 +24,7 @@ MARKET_RESPONSE_KEYS = {
     "CSFloat": "csfloat",
     "CSGO Market": "csgomarket",
     "WhiteMarket": "whitemarket",
+    "CS.MONEY": "csmoney",
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
 
@@ -49,14 +51,16 @@ def get_skin_market_comparison(
     profit_mode: str = "smart",
 ) -> dict[str, Any]:
     """Load all cached indexes concurrently and compare every exact variant."""
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         csfloat_future = executor.submit(get_csfloat_prices, skin_id)
         csgomarket_future = executor.submit(get_csgomarket_prices, skin_id)
         whitemarket_future = executor.submit(get_whitemarket_prices, skin_id)
+        csmoney_future = executor.submit(get_csmoney_prices, skin_id)
         csfloat = csfloat_future.result()
         csgomarket = csgomarket_future.result()
         whitemarket = whitemarket_future.result()
-    market_responses = [csfloat, csgomarket, whitemarket]
+        csmoney = csmoney_future.result()
+    market_responses = [csfloat, csgomarket, whitemarket, csmoney]
     quick_sell_prices = (
         _load_quick_sell_prices(market_responses)
         if profit_mode == "quick_flip"

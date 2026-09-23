@@ -5,16 +5,23 @@ drives a real browser to load the storefront and captures the ``sell-orders``
 responses it makes while scrolling. This module turns that raw capture into
 rows in the same ``marketplace_listings`` table the other marketplaces use,
 so CS.Money's price can be compared like CSFloat's or CSGO Market's.
+
+Unlike CSFloat/CSGO Market, there is no live per-request fetch here: a
+background worker is the only writer (running ``marketplaces/csmoney.py`` on
+a schedule), so ``get_csmoney_prices`` below only ever reads what that worker
+last stored and flags it stale past ``CSMONEY_CACHE_TTL_SECONDS``.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .database import get_connection
 
 MARKETPLACE = "CS.MONEY"
 STORE_URL = "https://cs.money/ru/csgo/store/"
+DEFAULT_CACHE_TTL_SECONDS = 900
 
 # Doppler/Gamma Doppler phases are a small, fixed set Valve hasn't changed in
 # years. CS.Money bakes the phase into the display name (e.g. "... Gamma
@@ -50,6 +57,69 @@ _INSERT_LISTING_SQL = """
         is_available = TRUE,
         fetched_at = NOW()
 """
+
+
+def get_csmoney_prices(skin_id: str) -> dict[str, Any]:
+    """Return the worker's last stored CS.Money price for one skin's variants.
+
+    Same response shape as ``get_csfloat_prices``/``get_csgomarket_prices`` so
+    ``market_comparison.py`` can treat all marketplaces uniformly, but this
+    never triggers a live fetch -- CS.Money has no API to call synchronously.
+    """
+    ttl_seconds = _positive_int_env(
+        "CSMONEY_CACHE_TTL_SECONDS", DEFAULT_CACHE_TTL_SECONDS
+    )
+    with get_connection() as connection:
+        variants = connection.execute(
+            """
+            SELECT sv.id, sv.market_hash_name, l.listing_id, l.price_cents,
+                   l.item_url, l.float_value, l.quantity, l.fetched_at,
+                   l.fetched_at >= NOW() - (%s * INTERVAL '1 second') AS is_fresh
+            FROM skin_variants sv
+            LEFT JOIN marketplace_listings l
+              ON l.variant_id = sv.id AND l.marketplace = %s
+            WHERE sv.skin_id = %s AND sv.market_hash_name IS NOT NULL
+            ORDER BY sv.id
+            """,
+            (ttl_seconds, MARKETPLACE, skin_id),
+        ).fetchall()
+
+    results = []
+    for variant in variants:
+        listing = None
+        if variant["price_cents"] is not None:
+            listing = {
+                "marketplace": MARKETPLACE,
+                "listing_id": variant["listing_id"],
+                "price_cents": variant["price_cents"],
+                "item_url": variant["item_url"],
+                "float_value": variant["float_value"],
+                "quantity": variant["quantity"],
+                "fetched_at": variant["fetched_at"],
+                "stale": not variant["is_fresh"],
+            }
+        results.append(
+            {
+                "variant_id": variant["id"],
+                "market_hash_name": variant["market_hash_name"],
+                "listing": listing,
+                "cached": True,
+                "error": None,
+            }
+        )
+    return {
+        "marketplace": MARKETPLACE,
+        "cache_ttl_seconds": ttl_seconds,
+        "variants": results,
+    }
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def store_snapshot(responses: list[dict[str, Any]]) -> int:

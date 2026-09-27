@@ -35,6 +35,7 @@ class CsfloatAuthError(CsfloatRequestError):
 _auth_check_error: tuple[type[CsfloatRequestError], str] | None = None
 _auth_check_ttl_seconds = 300
 LOG = logging.getLogger(__name__)
+HTTP_DIAGNOSTIC_LOG = logging.getLogger("uvicorn.error")
 
 
 def validate_api_key() -> None:
@@ -526,18 +527,39 @@ def _load_json_with_rate_limit_retry(request: Request, *, timeout: int):
     route = _rate_limit_route(request.full_url)
     for attempt in range(3):
         _wait_for_route(route)
+        started_at = time.monotonic()
+        if _diagnostic_log_enabled():
+            HTTP_DIAGNOSTIC_LOG.info(
+                "CSFloat request route=%s attempt=%d", route, attempt + 1
+            )
         try:
             with urlopen(request, timeout=timeout) as response:
+                _log_http_response(
+                    route, attempt, getattr(response, "status", 200),
+                    getattr(response, "headers", None), started_at,
+                )
                 _remember_rate_limit(route, getattr(response, "headers", None))
                 return json.load(response)
         except HTTPError as error:
+            _log_http_response(route, attempt, error.code, error.headers, started_at)
             if error.code != 429 or attempt == 2:
                 raise
             delay = _rate_limit_delay(error.headers, attempt)
+            if _diagnostic_log_enabled():
+                HTTP_DIAGNOSTIC_LOG.info(
+                    "CSFloat retry route=%s after_seconds=%.2f", route, delay
+                )
             with _rate_limit_lock:
                 _route_cooldowns[route] = max(
                     _route_cooldowns.get(route, 0.0), time.monotonic() + delay
                 )
+        except (URLError, TimeoutError) as error:
+            if _diagnostic_log_enabled():
+                HTTP_DIAGNOSTIC_LOG.warning(
+                    "CSFloat transport_error route=%s attempt=%d kind=%s",
+                    route, attempt + 1, type(error).__name__,
+                )
+            raise
 
     raise RuntimeError("unreachable")
 
@@ -545,6 +567,8 @@ def _load_json_with_rate_limit_retry(request: Request, *, timeout: int):
 def _rate_limit_route(url: str) -> str:
     """Collapse item identifiers so limits are tracked by endpoint family."""
     path = urlsplit(url).path
+    if path == "/api/v1/listings/price-list":
+        return path
     if path.startswith("/api/v1/history/"):
         return "/api/v1/history/:item/sales"
     if path.startswith("/api/v1/listings/") and path.endswith("/buy-orders"):
@@ -558,7 +582,42 @@ def _wait_for_route(route: str) -> None:
     with _rate_limit_lock:
         delay = _route_cooldowns.get(route, 0.0) - time.monotonic()
     if delay > 0:
+        if _diagnostic_log_enabled():
+            HTTP_DIAGNOSTIC_LOG.info(
+                "CSFloat cooldown route=%s wait_seconds=%.2f", route, delay
+            )
         time.sleep(delay)
+
+
+def _diagnostic_log_enabled() -> bool:
+    return os.getenv("CSFLOAT_DIAGNOSTIC_LOG") == "1"
+
+
+def _safe_rate_header(headers: object, name: str) -> str:
+    if headers is None or not hasattr(headers, "get"):
+        return "-"
+    raw_value = headers.get(name)
+    value = str(raw_value).strip() if raw_value is not None else ""
+    if 0 < len(value) <= 24 and all(char in "0123456789." for char in value):
+        return value
+    return "-"
+
+
+def _log_http_response(
+    route: str, attempt: int, status: int, headers: object, started_at: float
+) -> None:
+    if not _diagnostic_log_enabled():
+        return
+    HTTP_DIAGNOSTIC_LOG.info(
+        "CSFloat response route=%s attempt=%d status=%d elapsed_ms=%d "
+        "limit=%s remaining=%s reset=%s retry_after=%s",
+        route, attempt + 1, status,
+        round((time.monotonic() - started_at) * 1000),
+        _safe_rate_header(headers, "X-RateLimit-Limit"),
+        _safe_rate_header(headers, "X-RateLimit-Remaining"),
+        _safe_rate_header(headers, "X-RateLimit-Reset"),
+        _safe_rate_header(headers, "Retry-After"),
+    )
 
 
 def _remember_rate_limit(route: str, headers: object) -> None:

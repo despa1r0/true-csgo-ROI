@@ -124,6 +124,70 @@ def test_rate_limit_routes_group_dynamic_item_identifiers():
         )
         == "/api/v1/listings/:id/buy-orders"
     )
+    assert (
+        csfloat._rate_limit_route(
+            "https://csfloat.com/api/v1/listings/price-list"
+        )
+        == "/api/v1/listings/price-list"
+    )
+
+
+def test_diagnostic_logs_status_and_rate_headers_without_secrets(monkeypatch):
+    messages = []
+
+    class RecordingLogger:
+        def info(self, message, *args):
+            messages.append(message % args)
+
+        def warning(self, message, *args):
+            messages.append(message % args)
+
+    calls = 0
+
+    def fake_urlopen(request, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise HTTPError(
+                request.full_url,
+                429,
+                "Too Many Requests",
+                {
+                    "Retry-After": "0",
+                    "X-RateLimit-Limit": "200",
+                    "X-RateLimit-Remaining": "0\nsecret-key",
+                },
+                BytesIO(b""),
+            )
+        response = FakeResponse([])
+        response.status = 200
+        response.headers = {
+            "X-RateLimit-Limit": "200",
+            "X-RateLimit-Remaining": "199",
+            "X-RateLimit-Reset": "1790000000",
+        }
+        return response
+
+    monkeypatch.setenv("CSFLOAT_DIAGNOSTIC_LOG", "1")
+    monkeypatch.setattr(csfloat, "HTTP_DIAGNOSTIC_LOG", RecordingLogger())
+    monkeypatch.setattr(csfloat, "urlopen", fake_urlopen)
+    monkeypatch.setattr(csfloat.time, "sleep", lambda _seconds: None)
+
+    request = csfloat.Request(
+        "https://csfloat.com/api/v1/listings?market_hash_name=SECRET_ITEM",
+        headers={"Authorization": "secret-key"},
+    )
+    assert csfloat._load_json_with_rate_limit_retry(request, timeout=10) == []
+
+    output = "\n".join(messages)
+    assert calls == 2
+    assert "route=/api/v1/listings attempt=1 status=429" in output
+    assert "route=/api/v1/listings attempt=2 status=200" in output
+    assert "limit=200 remaining=-" in output
+    assert "limit=200 remaining=199 reset=1790000000" in output
+    assert "secret-key" not in output
+    assert "SECRET_ITEM" not in output
+    assert "Authorization" not in output
 
 
 def test_loads_market_wide_price_index(monkeypatch):

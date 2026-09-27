@@ -199,6 +199,27 @@ jobs:
             exit 1
           fi
 
+          # Containers sharing another container's network namespace must be
+          # removed before that gateway can be recreated after an image update.
+          "${compose[@]}" rm -sf api csmoney-worker
+
+          echo "Starting Surfshark VPN gateway"
+          "${compose[@]}" up -d --no-deps gluetun
+
+          gluetun_state=unknown
+          for ((attempt = 1; attempt <= 24; attempt++)); do
+            gluetun_state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' true-roi-gluetun 2>/dev/null || true)
+            if [[ "$gluetun_state" == healthy || "$gluetun_state" == unhealthy || "$gluetun_state" == exited ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$gluetun_state" != healthy ]]; then
+            echo "Gluetun did not become healthy (state: $gluetun_state)" >&2
+            "${compose[@]}" logs --tail=100 gluetun >&2
+            exit 1
+          fi
+
           echo "Starting production application services"
           "${compose[@]}" up -d --no-deps api csmoney-worker csmoney-demand
 

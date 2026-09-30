@@ -118,11 +118,28 @@ export type Listing = {
   stattrak?: boolean;
   souvenir?: boolean;
   deal_percent?: number;
+  stale?: boolean;
   stickers?: Attachment[];
   charms?: Attachment[];
 };
 
-export type ListingsResponse = {
+export type MarketSourceState = "listings_available" | "summary_only" | "provider_unavailable" | "stale" | "empty" | "partial";
+export type MarketSourceSnapshot = {
+  source_state?: MarketSourceState;
+  status?: "ok" | "partial" | "stale" | "unavailable";
+  variant_states?: Array<{
+    variant_id: string;
+    source_state: MarketSourceState;
+    status: "ok" | "partial" | "stale" | "unavailable";
+    quote_source?: "storefront" | "wiki_market_summary" | null;
+    fetched_at?: string | null;
+    stale: boolean;
+    is_partial: boolean;
+    error?: string | null;
+  }>;
+};
+
+export type ListingsResponse = MarketSourceSnapshot & {
   marketplace?: string;
   listings: Listing[];
   error?: string | null;
@@ -130,7 +147,7 @@ export type ListingsResponse = {
   stale?: boolean;
   is_stale?: boolean;
   is_partial?: boolean;
-  quote_source?: "storefront" | "wiki_market_summary";
+  quote_source?: "storefront" | "wiki_market_summary" | "mixed" | null;
   refresh_queued?: boolean;
   fetched_at?: string | null;
 };
@@ -144,7 +161,7 @@ export type MarketPrice = {
   quantity: number | null;
   fetched_at: string | null;
   stale: boolean;
-  source?: "storefront" | "wiki_market_summary";
+  source?: "storefront" | "wiki_market_summary" | "listing" | "index";
   is_partial?: boolean;
 };
 
@@ -156,10 +173,13 @@ export type ProfitOpportunity = ProfitResult & {
   sell_marketplace: MarketplaceId;
   buy_price_source?: "lowest_ask";
   sell_price_source?: "lowest_ask" | "best_bid";
+  buy_quote_source?: QuoteSource;
+  sell_quote_source?: QuoteSource;
   sell_mode: SellMode;
   sell_liquidity?: SellLiquiditySignal | null;
   risk_level?: FlipRiskLevel | null;
 };
+export type QuoteSource = "storefront" | "wiki_market_summary" | "listing" | "index" | "best_bid";
 export type FlipRiskLevel = "critical" | "high" | "caution" | "unknown";
 export type SellLiquiditySignal = {
   score: number | null;
@@ -207,7 +227,7 @@ export type DetailComponentState = {
   fetched_at?: string | null;
   error?: string | null;
 };
-export type MarketplaceDetails = {
+export type MarketplaceDetails = MarketSourceSnapshot & {
   marketplace: MarketplaceId;
   variant_id: string;
   market_hash_name: string;
@@ -242,7 +262,7 @@ export type MarketplaceDetails = {
   stale?: boolean;
   is_stale?: boolean;
   is_partial?: boolean;
-  quote_source?: "storefront" | "wiki_market_summary";
+  quote_source?: "storefront" | "wiki_market_summary" | "mixed" | null;
   refresh_queued?: boolean;
 };
 

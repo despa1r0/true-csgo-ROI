@@ -1,16 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { api, type DetailComponentName, type Listing, type ListingFilters, type ListingsResponse, type MarketplaceDetails, type MarketplaceOption, type ProfitMode, type Sale, type SellMode, type SkinDetails, type SkinQuality, type VariantComparison, type VariantKind } from "@/shared/api";
+import { api, type DetailComponentName, type Listing, type ListingFilters, type ListingsResponse, type MarketSourceState, type MarketplaceDetails, type MarketplaceOption, type ProfitMode, type Sale, type SellMode, type SkinDetails, type SkinQuality, type VariantComparison, type VariantKind, type SkinVariant, type WikiPriceHistory } from "@/shared/api";
 import { formatDate, formatNumber, formatUsd } from "@/shared/lib/format";
 import type { HistoryPeriod } from "@/features/analytics/SalesChart";
 import styles from "./market.module.css";
 import { FlipRiskNotice } from "./FlipRiskNotice";
 import { flipRiskLevel } from "./flipRisk";
+import { QuoteProvenance, resolveMarketAsk } from "./quoteSource";
 
 const wearSlugs: Record<string, ListingFilters["wear"]> = { "Factory New": "factory-new", "Minimal Wear": "minimal-wear", "Field-Tested": "field-tested", "Well-Worn": "well-worn", "Battle-Scarred": "battle-scarred" };
 const SalesChart = lazy(() => import("@/features/analytics/SalesChart").then((module) => ({ default: module.SalesChart })));
@@ -53,6 +54,8 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
   const [hasCharm, setHasCharm] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState<ListingFilters>({ wear: wearSlugs[quality.wear], sort_by: "lowest_price", variant: "any", has_stickers: false, has_charm: false, limit: 30 });
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<SkinVariant | null>(null);
+  const detailVariantId = selectedListing?.variant_id ?? selectedVariant?.id;
   const [selectedListingStale, setSelectedListingStale] = useState(false);
   const [tab, setTab] = useState<Tab>("history");
   const [analyticsMarket, setAnalyticsMarket] = useState(marketId);
@@ -88,9 +91,9 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
 
   const analyticsMarkets = listMarkets;
   const detailQueries = useQueries({ queries: analyticsMarkets.map((item) => ({
-    queryKey: ["variant-details", selectedListing?.variant_id, item.id],
-    queryFn: ({ signal }: { signal: AbortSignal }) => api.variantDetails(selectedListing!.variant_id!, item.id, signal),
-    enabled: Boolean(selectedListing?.variant_id && (item.id === analyticsMarket || tab === "compare")), staleTime: 0,
+    queryKey: ["variant-details", detailVariantId, item.id],
+    queryFn: ({ signal }: { signal: AbortSignal }) => api.variantDetails(detailVariantId!, item.id, signal),
+    enabled: Boolean(detailVariantId && (item.id === analyticsMarket || tab === "compare")), staleTime: 0,
   })) });
   const detailsByMarket = useMemo(() => new Map<string, MarketplaceDetails>(detailQueries.map((query, index) => [analyticsMarkets[index]?.id ?? "", query.data]).filter((entry): entry is [string, MarketplaceDetails] => Boolean(entry[0] && entry[1]))), [analyticsMarkets, detailQueries]);
   const listingQuickSellQuery = useQuery({
@@ -101,18 +104,23 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
   });
   const selectedDetails = detailsByMarket.get(analyticsMarket);
   const selectedCapability = marketplaces.find((item) => item.id === analyticsMarket)?.capabilities;
-  const selectedComparison = selectedListing?.variant_id ? comparison.get(selectedListing.variant_id) : undefined;
+  const selectedComparison = detailVariantId ? comparison.get(detailVariantId) : undefined;
+  const selectedDetailQuery = detailQueries[analyticsMarkets.findIndex((item) => item.id === analyticsMarket)];
   const activeTabIndex = analyticsTabs.indexOf(tab);
 
   function resetFilters() { setVariant("any"); setMinFloat(""); setMaxFloat(""); setMinPrice(""); setMaxPrice(""); setHasStickers(false); setHasCharm(false); setAppliedFilters({ wear: wearSlugs[quality.wear], sort_by: "lowest_price", variant: "any", has_stickers: false, has_charm: false, limit: 30 }); }
   function applyFilters() { setAppliedFilters(listingFilters); }
-  function openDetail(listing: Listing, marketplaceId: string, snapshot?: ListingsResponse) { setSelectedListing({ ...listing, marketplace_id: listing.marketplace_id ?? marketplaceId }); setSelectedListingStale(Boolean(snapshot?.is_stale ?? snapshot?.stale)); setAnalyticsMarket(listing.marketplace_id ?? marketplaceId); setTab("history"); }
+  function openDetail(listing: Listing, marketplaceId: string, snapshot?: ListingsResponse) { setSelectedVariant(null); setSelectedListing({ ...listing, marketplace_id: listing.marketplace_id ?? marketplaceId }); setSelectedListingStale(selectedListingIsStale(listing, snapshot)); setAnalyticsMarket(listing.marketplace_id ?? marketplaceId); setTab("history"); }
+  function openVariant(next: SkinVariant) { setSelectedListing(null); setSelectedVariant(next); setAnalyticsMarket("csmoney"); setTab("history"); }
   function switchMarket(next: string) { setMarketId(next); if (next !== ALL_MARKETS) setAnalyticsMarket(next); }
   const currentSales = selectedDetails?.sales ?? [];
   const visibleSales = useMemo(() => filterSalesByPeriod(currentSales, period), [currentSales, period]);
-  const selectedQuickSell = analyticsMarket === "csfloat" && selectedListing?.marketplace_id === "csfloat" && listingQuickSellQuery.data
-    ? { ...selectedDetails?.quick_sell, ...listingQuickSellQuery.data }
-    : selectedDetails?.quick_sell;
+  const freshListings = selectedDetails && detailComponentFresh(selectedDetails, "listings") ? selectedDetails : undefined;
+  const freshSales = selectedDetails && detailComponentFresh(selectedDetails, "sales") ? selectedDetails : undefined;
+  const freshBuyOrders = selectedDetails && detailComponentFresh(selectedDetails, "buy_orders") ? selectedDetails : undefined;
+  const selectedQuickSell = analyticsMarket === "csfloat" && selectedListing?.marketplace_id === "csfloat" && !selectedListingStale && listingQuickSellQuery.data
+    ? { ...freshBuyOrders?.quick_sell, ...listingQuickSellQuery.data }
+    : freshBuyOrders?.quick_sell;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -120,7 +128,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
         <Dialog.Overlay className={styles.dialogOverlay} />
         <Dialog.Content className={styles.dialogContent} aria-describedby={undefined}>
           <Dialog.Close className={styles.dialogClose} aria-label={t("common.close")}>×</Dialog.Close>
-          {!selectedListing ? (
+          {!selectedListing && !selectedVariant ? (
             <div className={styles.browserView}>
               <header className={styles.dialogHeader}><div><span>{t("listings.title")}</span><Dialog.Title>{skin.name}</Dialog.Title><p>{marketId === ALL_MARKETS ? t("listings.subtitleAll", { wear: quality.wear }) : t("listings.subtitle", { wear: quality.wear, market: market?.display_name ?? marketId })}</p></div><strong>{t("listings.count", { count: visibleListingCount })}</strong></header>
               <section className={styles.listingToolbar}>
@@ -142,35 +150,37 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                 return <section className={styles.marketplaceListingGroup} key={marketplace.id} aria-labelledby={`market-listings-${marketplace.id}`}>
                   <header><div><span className={styles.marketplaceChip}>{marketplace.display_name}</span><h3 id={`market-listings-${marketplace.id}`}>{t("listings.marketHeading", { market: marketplace.display_name })}</h3></div><strong>{t("listings.count", { count: query?.data?.listings.length ?? 0 })}</strong></header>
                   {query?.data && <ListingSnapshotStatus snapshot={query.data} locale={locale} />}
-                  {query?.data?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
+                  {!query?.data?.source_state && query?.data?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{t("marketSource.summaryNote")}</p>}
                   {unsupportedFilters.length > 0 && <MarketplaceListingState title={t("listings.filterUnsupportedTitle")} detail={t("listings.filterUnsupportedMarket", { market: marketplace.display_name, filters: unsupportedFilters.map((filter) => t(`listings.${filter}`)).join(", ") })} />}
                   {query?.isLoading && <MarketplaceListingState title={t("common.loading")} />}
                   {query?.isError && <MarketplaceListingState title={t("listings.providerError", { market: marketplace.display_name })} detail={t("listings.providerErrorHint")} onRetry={() => void query.refetch()} />}
                   {paintIndexUnavailable && <MarketplaceListingState title={t("listings.paintIndexUnavailableTitle")} detail={t("listings.paintIndexUnavailable", { market: marketplace.display_name })} />}
-                  {!paintIndexUnavailable && query?.data?.error && <MarketplaceListingState title={t("listings.providerError", { market: marketplace.display_name })} detail={t("listings.providerErrorHint")} onRetry={() => void query.refetch()} />}
-                  {!query?.isLoading && !query?.isError && !query?.data?.error && !query?.data?.refresh_queued && query?.data?.quote_source !== "wiki_market_summary" && unsupportedFilters.length === 0 && query?.data?.listings.length === 0 && <MarketplaceListingState title={t("listings.none")} detail={t("listings.noneOnMarket", { market: marketplace.display_name })} />}
+                  {!paintIndexUnavailable && query?.data?.error && !query.data.source_state && <MarketplaceListingState title={t("listings.providerError", { market: marketplace.display_name })} detail={t("listings.providerErrorHint")} onRetry={() => void query.refetch()} />}
+                  {!query?.isLoading && !query?.isError && !query?.data?.source_state && !query?.data?.error && !query?.data?.refresh_queued && query?.data?.quote_source !== "wiki_market_summary" && unsupportedFilters.length === 0 && query?.data?.listings.length === 0 && <MarketplaceListingState title={t("listings.none")} detail={t("listings.noneOnMarket", { market: marketplace.display_name })} />}
                   {query?.data?.listings.length ? <div className={styles.listingGrid}>{query.data.listings.map((listing, index) => <ListingCard key={`${marketplace.id}-${listing.listing_id ?? listing.variant_id}-${index}`} listing={{ ...listing, marketplace_id: listing.marketplace_id ?? marketplace.id }} marketplaceName={marketplace.display_name} fallbackImage={skin.image_url} locale={locale} onClick={() => openDetail(listing, marketplace.id, query.data)} />)}</div> : null}
+                  {marketplace.id === "csmoney" && quality.variants.filter((item) => !query?.data?.listings.some((listing) => listing.variant_id === item.id) && variantMatchesFilter(item, appliedFilters.variant)).map((item) => <button key={item.id} className={styles.secondaryButton} type="button" onClick={() => openVariant(item)}>{t("analytics.openVariant", { name: item.market_hash_name })}</button>)}
                 </section>;
               })}</div>
             </div>
           ) : (
             <div className={styles.detailView}>
               <aside className={styles.detailAside}>
-                <button className={styles.backButton} type="button" onClick={() => setSelectedListing(null)}>← {t("analytics.backToListings")}</button>
-                <span className={styles.eyebrow}>{t("analytics.selectedListing")}</span><Dialog.Title>{selectedListing.market_hash_name}</Dialog.Title>
-                <div className={styles.detailImage}><img src={selectedListing.image_url ?? skin.image_url ?? ""} alt="" width="400" height="224" /></div>
-                <strong className={styles.detailPrice}>{formatUsd(selectedListing.price_cents, locale)}</strong>
+                <button className={styles.backButton} type="button" onClick={() => { setSelectedListing(null); setSelectedVariant(null); }}>← {t("analytics.backToListings")}</button>
+                <span className={styles.eyebrow}>{t(selectedListing ? "analytics.selectedListing" : "analytics.selectedVariant")}</span><Dialog.Title>{selectedListing?.market_hash_name ?? selectedVariant?.market_hash_name}</Dialog.Title>
+                <div className={styles.detailImage}><img src={selectedListing?.image_url ?? selectedVariant?.image_url ?? skin.image_url ?? ""} alt="" width="400" height="224" /></div>
+                {selectedListing && <><strong className={styles.detailPrice}>{formatUsd(selectedListing.price_cents, locale)}</strong>
                 <dl className={styles.facts}><div><dt>Float</dt><dd>{selectedListing.float_value?.toFixed(8) ?? "—"}</dd></div><div><dt>Seed</dt><dd>{selectedListing.paint_seed ?? "—"}</dd></div><div><dt>{t("analytics.market")}</dt><dd>{marketplaces.find((item) => item.id === selectedListing.marketplace_id)?.display_name ?? selectedListing.marketplace_id}</dd></div></dl>
                 <AttachmentRow items={selectedListing.stickers} label={t("attachments.sticker")} locale={locale} />
                 <AttachmentRow items={selectedListing.charms} label={t("attachments.charm")} locale={locale} />
                 {selectedListingStale && <p className={styles.sourceNote}>{t("listings.snapshotStale")}</p>}
-                <div className={styles.detailActions}>{selectedListing.item_url && <a href={selectedListing.item_url} target="_blank" rel="noreferrer">{t("common.open")} ↗</a>}{!selectedListingStale && <Link to={`/calculator?skin=${encodeURIComponent(skin.id)}&variant=${encodeURIComponent(selectedListing.variant_id ?? "")}&buy=${selectedListing.price_cents}&market=${selectedListing.marketplace_id ?? marketId}`}>{t("navigation.calculator")} →</Link>}</div>
+                <div className={styles.detailActions}>{selectedListing.item_url && <a href={selectedListing.item_url} target="_blank" rel="noreferrer">{t("common.open")} ↗</a>}{!selectedListingStale && <Link to={`/calculator?skin=${encodeURIComponent(skin.id)}&variant=${encodeURIComponent(selectedListing.variant_id ?? "")}&buy=${selectedListing.price_cents}&market=${selectedListing.marketplace_id ?? marketId}`}>{t("navigation.calculator")} →</Link>}</div></>}
+                {!selectedListing && <p className={styles.sourceNote}>{t("analytics.variantOnlyNote")}</p>}
               </aside>
               <main className={styles.analyticsPane}>
-                <header className={styles.analyticsHeader}><div><span>{t("analytics.title")}</span><h2>{selectedListing.market_hash_name}</h2></div><div className={styles.marketTabs}>{analyticsMarkets.map((item) => <button className={analyticsMarket === item.id ? styles.activeChip : ""} type="button" key={item.id} onClick={() => setAnalyticsMarket(item.id)}>{item.display_name}</button>)}</div></header>
+                <header className={styles.analyticsHeader}><div><span>{t("analytics.title")}</span><h2>{selectedListing?.market_hash_name ?? selectedVariant?.market_hash_name}</h2></div><div className={styles.marketTabs}>{analyticsMarkets.map((item) => <button className={analyticsMarket === item.id ? styles.activeChip : ""} type="button" key={item.id} onClick={() => setAnalyticsMarket(item.id)}>{item.display_name}</button>)}</div></header>
                 {selectedDetails && <ListingSnapshotStatus snapshot={selectedDetails} locale={locale} />}
                 {selectedDetails && <DetailComponentStatus details={selectedDetails} component={detailComponentForTab(tab)} locale={locale} />}
-                {selectedDetails?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
+                {!selectedDetails?.source_state && selectedDetails?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{t("marketSource.summaryNote")}</p>}
                 <nav
                   className={styles.analyticsTabs}
                   role="tablist"
@@ -194,20 +204,21 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                   <span className={styles.tabIndicator} aria-hidden="true" />
                   {analyticsTabs.map((item) => <button id={`analytics-tab-${item}`} role="tab" aria-controls={`analytics-panel-${item}`} aria-selected={tab === item} tabIndex={tab === item ? 0 : -1} className={tab === item ? styles.activeTab : ""} type="button" key={item} onClick={() => setTab(item)}>{t(item === "history" && analyticsMarket === "csmoney" ? "analytics.wikiTradePriceHistory" : `analytics.${item}`)}</button>)}
                 </nav>
-                {detailQueries.some((item) => item.isLoading) && !selectedDetails && <div className={styles.emptyState}>{t("common.loading")}</div>}
-                <div className={styles.tabContent} key={tab} id={`analytics-panel-${tab}`} role="tabpanel" aria-labelledby={`analytics-tab-${tab}`} tabIndex={0}>
+                {selectedDetailQuery?.isLoading && !selectedDetails && <MarketplaceListingState title={t("common.loading")} />}
+                {selectedDetailQuery?.isError && <MarketplaceListingState title={t("analytics.detailError")} onRetry={() => void selectedDetailQuery.refetch()} />}
+                {(selectedDetails || tab === "compare" || (analyticsMarket === "csmoney" && tab === "history")) && <div className={styles.tabContent} key={tab} id={`analytics-panel-${tab}`} role="tabpanel" aria-labelledby={`analytics-tab-${tab}`} tabIndex={0}>
                 {tab === "history" && <section className={styles.analyticsSection}>
-                  <div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(selectedDetails?.overview?.price_cents, locale)} /><Metric label={t("analytics.bestBid")} value={formatUsd(selectedQuickSell?.best_price_cents, locale)} /><Metric label={t("analytics.liquidity")} value={selectedDetails?.stats?.liquidity_score == null ? "—" : `${selectedDetails.stats.liquidity_score}/100`} /><Metric label={t("analytics.salesDay")} value={formatNumber(selectedDetails?.stats?.sales_per_day, locale)} /></div>
-                  {analyticsMarket === "csmoney" && selectedListing.variant_id ? <WikiTradeHistory variantId={selectedListing.variant_id} locale={locale} /> : <>
+                  <div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(freshListings?.overview?.price_cents, locale)} /><Metric label={t("analytics.bestBid")} value={formatUsd(selectedQuickSell?.best_price_cents, locale)} /><Metric label={t("analytics.liquidity")} value={selectedDetails && liquidityScoreIfFresh(selectedDetails) != null ? String(liquidityScoreIfFresh(selectedDetails)) + "/100" : "—"} /><Metric label={t("analytics.salesDay")} value={formatNumber(freshSales?.stats?.sales_per_day, locale)} /></div>
+                  {analyticsMarket === "csmoney" && detailVariantId ? <WikiTradeHistory variantId={detailVariantId} locale={locale} /> : <>
                     <div className={styles.chartHeader}><div><h3>{t("analytics.history")}</h3><span>{t("analytics.points", { count: visibleSales.length })}</span></div><div>{(["24h", "7d", "14d", "all"] as HistoryPeriod[]).map((item) => <button className={period === item ? styles.activeChip : ""} type="button" key={item} disabled={item !== period && filterSalesByPeriod(currentSales, item).length === 0} onClick={() => setPeriod(item)}>{t(item === "all" ? "analytics.periodAll" : `analytics.period${item}`)}</button>)}</div></div>
                     {!selectedCapability?.supports_sales_history ? <div className={styles.emptyState}>{t("analytics.historyUnavailable")}</div> : currentSales.length ? <Suspense fallback={<div className={styles.emptyState}>{t("common.loading")}</div>}><SalesChart sales={visibleSales} period="all" /></Suspense> : <div className={styles.emptyState}>{selectedDetails?.sales_error ?? t("analytics.historyEmpty")}</div>}
                     {selectedCapability?.supports_sales_history && <><p className={styles.sourceNote}>{t("analytics.sourceNote")}</p><DataTable headers={[t("analytics.date"), t("analytics.price"), "Float"]} rows={visibleSales.slice(0, 50).map((sale) => [formatDate(sale.sold_at, locale), formatUsd(sale.price_cents, locale), sale.float_value?.toFixed(8) ?? "—"])} /></>}
                   </>}
                 </section>}
-                {tab === "active" && <section className={styles.analyticsSection}><div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(selectedDetails?.overview?.price_cents, locale)} /><Metric label={t("listings.title")} value={String(selectedDetails?.overview?.active_listings ?? selectedDetails?.listings?.length ?? "—")} /></div><DataTable headers={[t("analytics.price"), "Float", "Seed", t("analytics.attachments")]} rows={(selectedDetails?.listings ?? []).map((item) => [formatUsd(item.price_cents, locale), item.float_value?.toFixed(8) ?? "—", String(item.paint_seed ?? "—"), <AttachmentPreview listing={item} compact locale={locale} />])} /></section>}
+                {tab === "active" && <section className={styles.analyticsSection}><div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(selectedDetails?.overview?.price_cents, locale)} /><Metric label={t("listings.title")} value={String(activeListingCount(freshListings) ?? "—")} /></div><DataTable headers={[t("analytics.price"), "Float", "Seed", t("analytics.attachments")]} rows={(freshListings?.listings ?? []).map((item) => [formatUsd(item.price_cents, locale), item.float_value?.toFixed(8) ?? "—", String(item.paint_seed ?? "—"), <AttachmentPreview listing={item} compact locale={locale} />])} /></section>}
                 {tab === "quick" && <section className={styles.analyticsSection}>{!selectedCapability?.supports_quick_sell ? <div className={styles.emptyState}>{t("analytics.quickUnavailable")}</div> : <><div className={styles.metricGrid}><Metric label={t("analytics.bestBid")} value={formatUsd(selectedQuickSell?.best_price_cents, locale)} /><Metric label={t("analytics.bidDepth")} value={String(selectedQuickSell?.near_bid_depth ?? "—")} /></div>{listingQuickSellQuery.isLoading && analyticsMarket === "csfloat" && <p className={styles.sourceNote}>{t("common.loading")}</p>}<DataTable headers={[t("analytics.price"), t("analytics.quantity"), t("analytics.conditions")]} rows={(selectedQuickSell?.orders ?? []).map((order) => [formatUsd(order.price_cents, locale), String(order.quantity), order.min_float == null && order.max_float == null ? "—" : `${order.min_float ?? 0}–${order.max_float ?? 1}`])} /><p className={styles.sourceNote}>{selectedQuickSell?.note}</p></>}</section>}
-                {tab === "compare" && <ComparePanel marketplaces={analyticsMarkets} details={detailsByMarket} comparison={selectedComparison} selectedListing={selectedListing} selectedListingStale={selectedListingStale} listingQuickSell={listingQuickSellQuery.data} buy={compareBuy} sell={compareSell} onBuy={setCompareBuy} onSell={setCompareSell} onSwap={() => { setCompareBuy(compareSell); setCompareSell(compareBuy); }} locale={locale} />}
-                </div>
+                {tab === "compare" && <ComparePanel marketplaces={analyticsMarkets} details={detailsByMarket} comparison={selectedComparison} selectedListing={selectedListing} fallbackImage={selectedVariant?.image_url ?? skin.image_url} selectedListingStale={selectedListingStale} listingQuickSell={listingQuickSellQuery.data} buy={compareBuy} sell={compareSell} onBuy={setCompareBuy} onSell={setCompareSell} onSwap={() => { setCompareBuy(compareSell); setCompareSell(compareBuy); }} locale={locale} />}
+                </div>}
               </main>
             </div>
           )}
@@ -222,17 +233,28 @@ function WikiTradeHistory({ variantId, locale }: { variantId: string; locale: st
   const query = useQuery({
     queryKey: ["csmoney-wiki-trade-history", variantId],
     queryFn: ({ signal }) => api.csmoneyPriceHistory(variantId, signal),
-    staleTime: 6 * 60 * 60 * 1000,
+    staleTime: 60_000,
+    refetchInterval: (query) => !wikiTradeHistoryFresh(query.state.data, Date.now()) ? 60_000 : 5 * 60_000,
     retry: false,
   });
-  const points = query.data?.points ?? [];
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    const expiresAt = query.data?.latest_at ? Date.parse(query.data.latest_at) + 72 * 60 * 60 * 1000 : NaN;
+    const expiryTimer = Number.isFinite(expiresAt) && expiresAt >= Date.now()
+      ? window.setTimeout(() => setNow(Date.now()), expiresAt - Date.now() + 1)
+      : undefined;
+    return () => { window.clearInterval(timer); if (expiryTimer !== undefined) window.clearTimeout(expiryTimer); };
+  }, [query.data?.latest_at]);
+  const points = wikiTradeHistoryFresh(query.data, now) ? query.data?.points ?? [] : [];
   return <>
     <div className={styles.chartHeader}><div><h3>{t("analytics.wikiTradePriceHistory")}</h3><span>{t("analytics.pricePoints", { count: points.length })}</span></div></div>
     <p className={styles.sourceNote}>{t("analytics.wikiTradePriceNote")}</p>
     {query.isLoading ? <div className={styles.emptyState}>{t("common.loading")}</div>
+      : query.isError || query.data?.error ? <MarketplaceListingState title={t("analytics.tradeHistoryError")} onRetry={() => void query.refetch()} />
       : points.length ? <Suspense fallback={<div className={styles.emptyState}>{t("common.loading")}</div>}><PriceHistoryChart points={points} /></Suspense>
         : <div className={styles.emptyState}>{t("analytics.wikiTradePriceUnavailable")}</div>}
-    {query.data?.latest_at && <p className={styles.sourceNote}>{t("analytics.wikiTradePriceLatest", { date: formatDate(query.data.latest_at, locale), price: formatUsd(points.at(-1)?.price_cents, locale) })}</p>}
+    {points.length > 0 && query.data?.latest_at && <p className={styles.sourceNote}>{t("analytics.wikiTradePriceLatest", { date: formatDate(query.data.latest_at, locale), price: formatUsd(points.at(-1)?.price_cents, locale) })}</p>}
     <p className={styles.sourceNote}>{t("analytics.historyUnavailable")}</p>
   </>;
 }
@@ -242,15 +264,87 @@ function MarketplaceListingState({ title, detail, onRetry }: { title: string; de
   return <div className={styles.marketplaceState} role="status"><strong>{title}</strong>{detail && <p>{detail}</p>}{onRetry && <button type="button" onClick={onRetry}>{t("common.retry")}</button>}</div>;
 }
 
-function ListingSnapshotStatus({ snapshot, locale }: { snapshot: Pick<ListingsResponse, "fetched_at" | "stale" | "is_stale" | "is_partial" | "refresh_queued" | "quote_source">; locale: string }) {
+type SourceSnapshot = Pick<ListingsResponse, "source_state" | "variant_states" | "fetched_at" | "cached" | "stale" | "is_stale" | "is_partial" | "refresh_queued" | "quote_source">;
+
+const sourceStatusLabels: Record<MarketSourceState, string> = {
+  listings_available: "marketSource.listingsAvailable",
+  summary_only: "marketSource.summaryOnly",
+  provider_unavailable: "marketSource.providerUnavailable",
+  stale: "marketSource.stale",
+  empty: "marketSource.empty",
+  partial: "marketSource.partial",
+};
+
+export function sourceStatusKey(snapshot?: SourceSnapshot): string {
+  if (snapshot?.source_state) return sourceStatusLabels[snapshot.source_state];
+  if (!snapshot?.fetched_at) return "analytics.quoteUnavailable";
+  return snapshot.cached || (snapshot.is_stale ?? snapshot.stale) ? "common.cached" : "analytics.dataFresh";
+}
+
+export function activeListingCount(details?: MarketplaceDetails) {
+  if (!details) return undefined;
+  if (details.source_state === "summary_only" || details.quote_source === "wiki_market_summary") return details.listings?.length ?? 0;
+  return details.overview.active_listings ?? details.listings?.length;
+}
+
+export function listingSnapshotStale(snapshot?: SourceSnapshot, variantId?: string | null): boolean {
+  const state = snapshot?.variant_states?.find((item) => item.variant_id === variantId);
+  if (state) return state.source_state === "stale" || state.stale;
+  return snapshot?.source_state === "stale" || Boolean(snapshot?.is_stale ?? snapshot?.stale);
+}
+
+export function selectedListingIsStale(listing: Listing, snapshot?: SourceSnapshot): boolean {
+  return Boolean(listing.stale) || listingSnapshotStale(snapshot, listing.variant_id);
+}
+
+export function SourceStateStatus({ snapshot, locale, fallback = false }: { snapshot?: SourceSnapshot; locale: string; fallback?: boolean }) {
+  const { t } = useTranslation();
+  if (!snapshot?.source_state && !fallback) return null;
+  return <div role="status" className={styles.snapshotStatus}>
+    <strong>{t(sourceStatusKey(snapshot))}</strong>
+    {snapshot?.fetched_at && <span> · {t("analytics.updated", { date: formatDate(snapshot.fetched_at, locale) })}</span>}
+    {!snapshot?.source_state && (snapshot?.is_stale ?? snapshot?.stale) && <span> · {t("analytics.stale")}</span>}
+    {!snapshot?.source_state && snapshot?.is_partial && <span> · {t("listings.snapshotPartial")}</span>}
+    {snapshot?.source_state && <p>{t(snapshot.source_state === "summary_only" ? "marketSource.summaryNote" : `marketSource.${snapshot.source_state}Note`)}</p>}
+    {snapshot?.source_state === "partial" && snapshot.variant_states?.map((state) => <p key={state.variant_id}>
+      {t("marketSource.variantState", { variant: state.variant_id, state: t(sourceStatusLabels[state.source_state]) })}
+      {state.fetched_at && <> · {t("analytics.updated", { date: formatDate(state.fetched_at, locale) })}</>}
+    </p>)}
+  </div>;
+}
+
+function ListingSnapshotStatus({ snapshot, locale }: { snapshot: SourceSnapshot; locale: string }) {
   const { t } = useTranslation();
   const labels = [
-    snapshot.fetched_at && t("listings.snapshotUpdated", { date: formatDate(snapshot.fetched_at, locale) }),
+    !snapshot.source_state && snapshot.fetched_at && t("listings.snapshotUpdated", { date: formatDate(snapshot.fetched_at, locale) }),
     (snapshot.is_stale ?? snapshot.stale) && t("listings.snapshotStale"),
-    snapshot.is_partial && snapshot.quote_source !== "wiki_market_summary" && t("listings.snapshotPartial"),
+    !snapshot.source_state && snapshot.is_partial && snapshot.quote_source !== "wiki_market_summary" && t("listings.snapshotPartial"),
     snapshot.refresh_queued && t("listings.snapshotQueued"),
   ].filter(Boolean);
-  return labels.length ? <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p> : null;
+  return <><SourceStateStatus snapshot={snapshot} locale={locale} />{labels.length ? <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p> : null}</>;
+}
+
+
+export function detailComponentFresh(details: MarketplaceDetails, component: DetailComponentName): boolean {
+  const state = details.components?.[component];
+  return state ? state.status === "fresh" : details.source_state !== "stale" && details.source_state !== "provider_unavailable" && !(details.is_stale ?? details.stale);
+}
+
+export function liquidityScoreIfFresh(details: MarketplaceDetails): number | undefined {
+  return detailComponentFresh(details, "sales")
+    && detailComponentFresh(details, "listings")
+    && detailComponentFresh(details, "buy_orders")
+    ? details.stats?.liquidity_score ?? undefined : undefined;
+}
+
+export function wikiTradeHistoryFresh(history: WikiPriceHistory | undefined, now: number): boolean {
+  if (!history?.latest_at || !history.points.length || history.error) return false;
+  const latest = Date.parse(history.latest_at);
+  return Number.isFinite(latest) && latest <= now && now - latest <= 72 * 60 * 60 * 1000;
+}
+
+function variantMatchesFilter(variant: SkinVariant, filter?: VariantKind): boolean {
+  return !filter || filter === "any" || (filter === "stattrak" ? variant.stattrak : filter === "souvenir" ? variant.souvenir : !variant.stattrak && !variant.souvenir);
 }
 
 export function detailComponentForTab(tab: Tab): DetailComponentName | undefined {
@@ -277,7 +371,7 @@ function DetailComponentStatus({ details, component, locale }: { details: Market
 
 function ListingCard({ listing, marketplaceName, fallbackImage, locale, onClick }: { listing: Listing; marketplaceName: string; fallbackImage?: string | null; locale: string; onClick: () => void }) {
   const { t } = useTranslation();
-  return <button className={styles.listingCard} type="button" onClick={onClick}><div className={styles.listingChips}><span className={styles.listingMarketplace}>{marketplaceName}</span><span>{listing.wear_name ? wearCodes[listing.wear_name] ?? listing.wear_name : "—"}</span>{listing.stattrak && <span>StatTrak™</span>}{listing.souvenir && <span>Souvenir</span>}{Boolean(listing.charms?.length) && <span>Charm</span>}</div><img src={listing.image_url ?? fallbackImage ?? ""} alt="" width="280" height="180" loading="lazy" /><AttachmentPreview listing={listing} compact locale={locale} /><div className={styles.listingBottom}><strong>{formatUsd(listing.price_cents, locale)}</strong><span>Float {listing.float_value?.toFixed(6) ?? "—"}</span>{listing.predicted_price_cents && <small>{t("listings.estimate", { price: formatUsd(listing.predicted_price_cents, locale) })}</small>}</div></button>;
+  return <button className={styles.listingCard} type="button" onClick={onClick}><div className={styles.listingChips}><span className={styles.listingMarketplace}>{marketplaceName}</span><span>{listing.wear_name ? wearCodes[listing.wear_name] ?? listing.wear_name : "—"}</span>{listing.stattrak && <span>StatTrak™</span>}{listing.souvenir && <span>Souvenir</span>}{Boolean(listing.charms?.length) && <span>Charm</span>}</div><img src={listing.image_url ?? fallbackImage ?? ""} alt="" width="280" height="180" loading="lazy" /><AttachmentPreview listing={listing} compact locale={locale} /><div className={styles.listingBottom}><strong>{formatUsd(listing.price_cents, locale)}</strong><span>Float {listing.float_value?.toFixed(6) ?? "—"}</span>{listing.stale && <small>{t("listings.snapshotStale")}</small>}{listing.predicted_price_cents && <small>{t("listings.estimate", { price: formatUsd(listing.predicted_price_cents, locale) })}</small>}</div></button>;
 }
 function AttachmentRow({ items, label, locale }: { items?: Listing["stickers"]; label: string; locale: string }) {
   const { t } = useTranslation();
@@ -295,7 +389,7 @@ function AttachmentPreview({ listing, compact = false, locale = "en-US" }: { lis
 }
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "positive" | "negative" }) { return <div className={`${styles.metric} ${tone === "positive" ? styles.metricPositive : tone === "negative" ? styles.metricNegative : ""}`}><span>{label}</span><strong>{value}</strong></div>; }
 function DataTable({ headers, rows }: { headers: string[]; rows: ReactNode[][] }) { return rows.length ? <div className={styles.tableWrap}><table><thead><tr>{headers.map((item) => <th key={item}>{item}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table></div> : <div className={styles.emptyState}>—</div>; }
-function ComparePanel({ marketplaces, details, comparison, selectedListing, selectedListingStale, listingQuickSell, buy, sell, onBuy, onSell, onSwap, locale }: { marketplaces: MarketplaceOption[]; details: Map<string, MarketplaceDetails>; comparison?: VariantComparison; selectedListing: Listing; selectedListingStale: boolean; listingQuickSell?: { best_price_cents?: number | null }; buy: string; sell: string; onBuy: (value: string) => void; onSell: (value: string) => void; onSwap: () => void; locale: string }) {
+function ComparePanel({ marketplaces, details, comparison, selectedListing, fallbackImage, selectedListingStale, listingQuickSell, buy, sell, onBuy, onSell, onSwap, locale }: { marketplaces: MarketplaceOption[]; details: Map<string, MarketplaceDetails>; comparison?: VariantComparison; selectedListing: Listing | null; fallbackImage?: string | null; selectedListingStale: boolean; listingQuickSell?: { best_price_cents?: number | null }; buy: string; sell: string; onBuy: (value: string) => void; onSell: (value: string) => void; onSwap: () => void; locale: string }) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<Exclude<ProfitMode, "custom">>("smart");
   const [sellMode, setSellMode] = useState<SellMode>("listing");
@@ -303,21 +397,17 @@ function ComparePanel({ marketplaces, details, comparison, selectedListing, sele
   const sellOptions = marketplaces.filter((item) => item.capabilities.can_sell);
   const buyConfig = marketplaces.find((item) => item.id === buy);
   const sellConfig = marketplaces.find((item) => item.id === sell);
-  const listingMarket = selectedListing.marketplace_id;
-  const freshDetails = (marketplaceId: string) => {
+  const listingMarket = selectedListing?.marketplace_id;
+  const freshDetails = (marketplaceId: string, component: DetailComponentName) => {
     const detail = details.get(marketplaceId);
-    return detail && !(detail.is_stale ?? detail.stale) ? detail : undefined;
+    return detail && detailComponentFresh(detail, component) ? detail : undefined;
   };
-  const freshAsk = (marketplaceId: string) => {
-    const quote = comparison?.markets[marketplaceId];
-    if (quote && !quote.stale) return quote.price_cents;
-    return freshDetails(marketplaceId)?.overview.price_cents;
-  };
-  const buyQuote = buy === listingMarket && !selectedListingStale ? selectedListing.price_cents : freshAsk(buy);
-  const sellAsk = freshAsk(sell);
-  const sellBid = sell === listingMarket && sell === "csfloat" && listingQuickSell && !selectedListingStale ? listingQuickSell.best_price_cents : freshDetails(sell)?.quick_sell?.best_price_cents;
+  const buyAsk = resolveMarketAsk(comparison?.markets[buy], details.get(buy), Boolean(freshDetails(buy, "listings")), selectedListing && buy === listingMarket && !selectedListingStale ? selectedListing : undefined);
+  const sellAsk = resolveMarketAsk(comparison?.markets[sell], details.get(sell), Boolean(freshDetails(sell, "listings")));
+  const buyQuote = buyAsk.price_cents;
+  const sellBid = sell === listingMarket && sell === "csfloat" && listingQuickSell && !selectedListingStale ? listingQuickSell.best_price_cents : freshDetails(sell, "buy_orders")?.quick_sell?.best_price_cents;
   const effectiveSellMode: SellMode = mode === "quick_flip" ? "fast_buy" : sellMode;
-  const sellQuote = effectiveSellMode === "fast_buy" ? sellBid : sellAsk;
+  const sellQuote = effectiveSellMode === "fast_buy" ? sellBid : sellAsk.price_cents;
   const supportsSelectedSale = effectiveSellMode === "listing" || Boolean(sellConfig?.capabilities.supports_quick_sell);
   const calculationQuery = useQuery({
     queryKey: ["listing-comparison-result", buy, sell, buyQuote, sellQuote, mode, effectiveSellMode],
@@ -330,15 +420,13 @@ function ComparePanel({ marketplaces, details, comparison, selectedListing, sele
     retry: false,
   });
   const result = calculationQuery.data;
-  const sellDetail = freshDetails(sell);
+  const sellDetail = details.get(sell);
   const comparedSale = comparison?.opportunities.find((item) => item.buy_marketplace === buy && item.sell_marketplace === sell && item.sell_mode === effectiveSellMode);
-  const sellScore = sellDetail ? sellDetail.stats?.liquidity_score : comparedSale?.sell_liquidity?.score;
+  const sellScore = sellDetail ? liquidityScoreIfFresh(sellDetail) : comparedSale?.sell_liquidity?.score;
   const riskLevel = flipRiskLevel(result?.profit_cents, effectiveSellMode, sellScore);
   const sellSource = details.get(sell);
-  const buyPreview = buy === listingMarket && !selectedListingStale ? selectedListing : freshDetails(buy)?.listings?.[0];
-  const sellPreview = sell === listingMarket && !selectedListingStale ? selectedListing : freshDetails(sell)?.listings?.[0];
-  const sellSourceStale = sellSource?.is_stale ?? sellSource?.stale;
-  const status = sellSource?.fetched_at ? `${sellSource.cached || sellSourceStale ? t("common.cached") : t("common.live")} · ${t("analytics.updated", { date: formatDate(sellSource.fetched_at, locale) })}${sellSourceStale ? ` · ${t("analytics.stale")}` : ""}${sellSource.is_partial ? ` · ${t("listings.snapshotPartial")}` : ""}` : t("analytics.quoteUnavailable");
+  const buyPreview = buyAsk.listing;
+  const sellPreview = effectiveSellMode === "fast_buy" ? undefined : sellAsk.listing;
 
   return <section className={styles.comparePanel}>
     <div className={styles.compareControls}>
@@ -351,23 +439,21 @@ function ComparePanel({ marketplaces, details, comparison, selectedListing, sele
       <label><span>{t("calculator.sellType")}</span><select name="compare-sell-mode" value={effectiveSellMode} disabled={mode === "quick_flip"} onChange={(event) => setSellMode(event.target.value as SellMode)}><option value="listing">{t("calculator.listing")}</option><option value="fast_buy" disabled={!sellConfig?.capabilities.supports_quick_sell}>{t("calculator.fastBuy")}</option></select></label>
     </div>
     <div className={styles.comparePreviews}>
-      <ComparisonPreview title={t("analytics.buyPreview")} marketplace={buyConfig?.display_name ?? buy} listing={buyPreview} fallbackImage={selectedListing.image_url} price={buyQuote} locale={locale} />
-      <ComparisonPreview title={t("analytics.sellPreview")} marketplace={sellConfig?.display_name ?? sell} listing={sellPreview} fallbackImage={selectedListing.image_url} price={sellQuote} locale={locale} />
+      <ComparisonPreview title={t("analytics.buyPreview")} marketplace={buyConfig?.display_name ?? buy} listing={buyPreview} fallbackImage={selectedListing?.image_url ?? fallbackImage} price={buyQuote} locale={locale} />
+      <ComparisonPreview title={t("analytics.sellPreview")} marketplace={sellConfig?.display_name ?? sell} listing={sellPreview} fallbackImage={selectedListing?.image_url ?? fallbackImage} price={sellQuote} locale={locale} />
     </div>
-    <div className={styles.metricGrid}><Metric label={`${t("analytics.buy")} · ask`} value={formatUsd(buyQuote, locale)} /><Metric label={effectiveSellMode === "fast_buy" ? `${t("analytics.sell")} · bid` : `${t("analytics.sell")} · ask`} value={formatUsd(sellQuote, locale)} /><Metric label={t("analytics.bidDepth")} value={String(details.get(sell)?.quick_sell?.near_bid_depth ?? "—")} /><Metric label={t("analytics.netProfit")} value={formatUsd(result?.profit_cents, locale)} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /><Metric label={t("analytics.roi")} value={result ? (result.effective_buy_cents === 0 ? "—" : `${result.cash_roi_percent}%`) : "—"} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /></div>
+    <div className={styles.metricGrid}><Metric label={`${t("analytics.buy")} · ask`} value={formatUsd(buyQuote, locale)} /><Metric label={effectiveSellMode === "fast_buy" ? `${t("analytics.sell")} · bid` : `${t("analytics.sell")} · ask`} value={formatUsd(sellQuote, locale)} /><Metric label={t("analytics.bidDepth")} value={String(freshDetails(sell, "buy_orders")?.quick_sell?.near_bid_depth ?? "—")} /><Metric label={t("analytics.netProfit")} value={formatUsd(result?.profit_cents, locale)} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /><Metric label={t("analytics.roi")} value={result ? (result.effective_buy_cents === 0 ? "—" : `${result.cash_roi_percent}%`) : "—"} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /></div>
     <FlipRiskNotice level={riskLevel} score={sellScore} cashRoiPercent={result?.cash_roi_percent} />
-    {(comparison?.markets[buy]?.source === "wiki_market_summary" || comparison?.markets[sell]?.source === "wiki_market_summary") && <p className={styles.sourceNote}>{wikiMarketSummaryNote(locale)}</p>}
+    <QuoteProvenance buy={buyAsk.source} sell={sellQuote == null ? null : effectiveSellMode === "fast_buy" ? "best_bid" : sellAsk.source} />
     {result?.applied_fees && <div className={styles.feeBreakdown}><Metric label={t("calculator.depositFee")} value={formatUsd(result.deposit_fee_cents, locale)} /><Metric label={t("calculator.sellFee")} value={formatUsd(result.sell_fee_cents, locale)} /><Metric label={t("calculator.withdrawFee")} value={formatUsd(result.withdraw_fee_cents, locale)} /></div>}
     {!supportsSelectedSale && <p className={styles.sourceNote}>{t("analytics.quickUnavailable")}</p>}
     {calculationQuery.isError && <p className={styles.sourceNote}>{t("calculator.serverError")}</p>}
-    <p className={styles.sourceNote}>{status}</p>
+    {effectiveSellMode === "fast_buy" && sellSource?.components?.buy_orders
+      ? <DetailComponentStatus details={sellSource} component="buy_orders" locale={locale} />
+      : effectiveSellMode === "listing" && !sellSource?.source_state && sellSource?.components?.listings
+        ? <DetailComponentStatus details={sellSource} component="listings" locale={locale} />
+        : <SourceStateStatus snapshot={sellSource} locale={locale} fallback />}
   </section>;
-}
-
-function wikiMarketSummaryNote(locale: string) {
-  return locale === "ru-RU"
-    ? "CS.MONEY: минимальная цена и число предложений взяты из Wiki Market. Отдельные лоты сейчас недоступны; проверьте цену на площадке перед сделкой."
-    : "CS.MONEY: minimum price and offer count come from Wiki Market. Individual listings are currently unavailable; check the marketplace price before trading.";
 }
 
 function ComparisonPreview({ title, marketplace, listing, fallbackImage, price, locale }: { title: string; marketplace: string; listing?: Listing; fallbackImage?: string | null; price?: number | null; locale: string }) {

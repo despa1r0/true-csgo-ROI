@@ -1,228 +1,89 @@
 name: Build and deploy
-
 on:
   workflow_run:
     workflows: [CI]
     branches: [main]
     types: [completed]
-  workflow_dispatch:
-
+permissions:
+  contents: read
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: despa1r0/true-csgo-roi
   IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
-
 concurrency:
   group: true-roi-production
   cancel-in-progress: false
-
 jobs:
-  build-and-push:
+  build-images:
+    name: Publish Docker image (${{ matrix.dockerfile }})
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main')
-    runs-on: ubuntu-latest
+      github.event.workflow_run.head_branch == 'main'
     permissions:
       contents: read
       packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: Dockerfile
+            image: despa1r0/true-csgo-roi
+            cache-scope: true-roi-application
+          - dockerfile: Dockerfile.csmoney
+            image: despa1r0/true-csgo-roi-csmoney
+            cache-scope: true-roi-csmoney
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Checkout image commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.IMAGE_TAG }}
-
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      - name: Build and publish SHA and latest tags
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Build and push CS.MONEY worker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.csmoney
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-csmoney:${{ env.IMAGE_TAG }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-csmoney:latest
-
+            ${{ env.REGISTRY }}/${{ matrix.image }}:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ matrix.image }}:latest
+          cache-from: type=gha,scope=${{ matrix.cache-scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.cache-scope }}
   deploy:
-    needs: build-and-push
+    name: Deploy SHA-pinned images to production
+    needs: build-images
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 20
+    env:
+      SSH_DIRECTORY: ${{ github.workspace }}/.deploy-ssh
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Checkout deployment commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.IMAGE_TAG }}
-
-      - name: Check required deployment secrets
+          persist-credentials: false
+      - name: Validate deployment inputs and configure SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-        run: |
-          for variable in VPS_SSH_KEY VPS_HOST VPS_USER VPS_PORT; do
-            if [ -z "${!variable}" ]; then
-              echo "Missing required repository secret: $variable"
-              exit 1
-            fi
-          done
-
-      - name: Configure SSH
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-        run: |
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
-
-      - name: Copy production Compose file
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-        run: |
-          if [[ ! "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid image tag: expected a commit SHA" >&2
-            exit 1
-          fi
-          scp -P "$VPS_PORT" docker-compose.prod.yml \
-            "$VPS_USER@$VPS_HOST:/opt/true-roi/docker-compose.prod.yml.$IMAGE_TAG.staged"
-
-      - name: Deploy to VPS
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-        run: |
-          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "bash -s -- '$IMAGE_TAG'" <<'REMOTE'
-          set -Eeuo pipefail
-          cd /opt/true-roi
-
-          image_tag=$1
-          if [[ ! "$image_tag" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid image tag: expected a commit SHA" >&2
-            exit 1
-          fi
-          if ! command -v flock >/dev/null; then
-            echo "Deployment requires flock (util-linux) on the VPS" >&2
-            exit 1
-          fi
-
-          exec 9>.deploy.lock
-          if ! flock -w 300 9; then
-            echo "Another deployment still holds /opt/true-roi/.deploy.lock" >&2
-            exit 1
-          fi
-
-          staged_file="docker-compose.prod.yml.$image_tag.staged"
-          if [[ ! -f "$staged_file" ]]; then
-            echo "Staged production Compose file is missing" >&2
-            exit 1
-          fi
-          anonymous_docker_config=$(mktemp -d)
-          trap 'rm -f -- "$staged_file"; rmdir "$anonymous_docker_config" 2>/dev/null || true' EXIT
-          export DOCKER_CONFIG="$anonymous_docker_config" IMAGE_TAG="$image_tag"
-          docker compose --ansi never -f "$staged_file" config --quiet
-          compose=(docker compose --ansi never -f "$staged_file")
-
-          echo "Pulling production images for $image_tag"
-          "${compose[@]}" pull --quiet
-
-          mv -f -- "$staged_file" docker-compose.prod.yml
-          compose=(docker compose --ansi never -f docker-compose.prod.yml)
-
-          echo "Starting PostgreSQL"
-          "${compose[@]}" up -d db
-
-          db_state=unknown
-          for ((attempt = 1; attempt <= 24; attempt++)); do
-            db_state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' true-roi-postgres 2>/dev/null || true)
-            if [[ "$db_state" == healthy || "$db_state" == unhealthy || "$db_state" == exited ]]; then
-              break
-            fi
-            sleep 5
-          done
-          if [[ "$db_state" != healthy ]]; then
-            echo "PostgreSQL did not become healthy (state: $db_state)" >&2
-            "${compose[@]}" logs --tail=50 db >&2
-            exit 1
-          fi
-
-          # POSTGRES_PASSWORD only initializes an empty volume. Keep an existing
-          # role in sync when the VPS .env password is intentionally rotated.
-          db_environment=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' true-roi-postgres)
-          postgres_user=$(sed -n 's/^POSTGRES_USER=//p' <<<"$db_environment")
-          postgres_db=$(sed -n 's/^POSTGRES_DB=//p' <<<"$db_environment")
-          postgres_password=$(sed -n 's/^POSTGRES_PASSWORD=//p' <<<"$db_environment")
-          unset db_environment
-          if [[ -z "$postgres_user" || -z "$postgres_db" || -z "$postgres_password" ]]; then
-            echo "PostgreSQL container is missing required environment values" >&2
-            exit 1
-          fi
-          echo "Synchronizing PostgreSQL role credentials"
-          docker exec -i \
-            -e TARGET_ROLE="$postgres_user" \
-            -e TARGET_DB="$postgres_db" \
-            -e TARGET_PASSWORD="$postgres_password" \
-            true-roi-postgres \
-            sh -ec 'psql --username "$TARGET_ROLE" --dbname "$TARGET_DB" --set=ON_ERROR_STOP=1 --set=role_name="$TARGET_ROLE" --set=role_password="$TARGET_PASSWORD"' <<'SQL'
-          SELECT format('ALTER ROLE %I WITH PASSWORD %L', :'role_name', :'role_password') \gexec
-          SQL
-          unset postgres_password
-
-          echo "Seeding catalogue before replacing application containers"
-          if ! "${compose[@]}" up --no-deps --abort-on-container-exit --exit-code-from catalog-seed catalog-seed; then
-            echo "Catalogue seed failed" >&2
-            "${compose[@]}" logs --tail=100 catalog-seed >&2
-            exit 1
-          fi
-
-          echo "Starting production application services"
-          "${compose[@]}" up -d --no-deps api csmoney-worker csmoney-demand
-
-          api_state=unknown
-          for ((attempt = 1; attempt <= 24; attempt++)); do
-            api_state=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' true-roi-api 2>/dev/null || true)
-            if [[ "$api_state" == healthy || "$api_state" == unhealthy || "$api_state" == exited ]]; then
-              break
-            fi
-            sleep 5
-          done
-
-          "${compose[@]}" ps --all
-          if [[ "$api_state" != healthy ]]; then
-            echo "API did not become healthy (state: $api_state)" >&2
-            "${compose[@]}" logs --tail=30 api >&2
-            exit 1
-          fi
-          for service in true-roi-csmoney-crawler true-roi-csmoney-demand; do
-            state=$(docker inspect --format '{{.State.Status}}' "$service" 2>/dev/null || true)
-            if [[ "$state" != running ]]; then
-              echo "$service is not running (state: $state)" >&2
-              exit 1
-            fi
-          done
-          echo "Deployment healthy: $image_tag"
-          REMOTE
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: scripts/ci/deploy-ssh.sh configure
+      - name: Stage production Compose and deployment script
+        run: scripts/ci/deploy-ssh.sh copy
+      - name: Run production deployment
+        run: scripts/ci/deploy-ssh.sh deploy
+      - name: Remove SSH credentials
+        if: always()
+        run: scripts/ci/deploy-ssh.sh cleanup

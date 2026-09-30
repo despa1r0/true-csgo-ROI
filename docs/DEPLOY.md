@@ -1,6 +1,25 @@
 # Production deployment
 
-The `Build and deploy` workflow runs after a successful `CI` push to `main` or by manual dispatch. It builds two images, stages `docker-compose.prod.yml` on the VPS, then pulls and starts the services. Images use the commit SHA; the `latest` tag is published but not used for deployment.
+The `Build and deploy` workflow runs after a successful `CI` push to `main`. It builds two images, stages `docker-compose.prod.yml` on the VPS, then pulls and starts the services. Images use the commit SHA; the `latest` tag is published but not used for deployment.
+
+
+Configure these repository secrets before enabling deployment:
+
+| Secret | Value |
+| --- | --- |
+| `VPS_HOST` | VPS DNS name or IP address |
+| `VPS_PORT` | SSH port |
+| `VPS_USER` | Deployment account |
+| `VPS_SSH_KEY` | Private SSH key for that account |
+| `VPS_KNOWN_HOSTS` | Preverified OpenSSH `known_hosts` entry for the VPS |
+
+Obtain the server host-key fingerprint through an independent trusted channel
+(for example, the VPS provider console or an administrator), compare it with
+the fingerprint reported by `ssh-keygen -lf` for the candidate public host key,
+then place the verified `known_hosts` line in `VPS_KNOWN_HOSTS`. Do not create
+this secret by trusting an unverified `ssh-keyscan` result. The workflow checks
+that the entry matches `VPS_HOST` and `VPS_PORT`, and both `ssh` and `scp` require
+strict host-key checking.
 
 GitHub Actions serializes workflow runs with the `true-roi-production` concurrency group. On the VPS, `/opt/true-roi/.deploy.lock` is held with `flock` while the staged Compose file is validated and installed, images are pulled, and services are started. The VPS user needs write access to `/opt/true-roi` and `flock` from `util-linux`.
 

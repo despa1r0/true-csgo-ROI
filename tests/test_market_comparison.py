@@ -434,3 +434,46 @@ def test_quick_flip_loads_fast_buy_for_every_available_market(monkeypatch):
         ("csgomarket", "variant-1"),
     }
     assert result["variants"][0]["opportunities"][0]["sell_price_cents"] == 900
+
+
+def test_opportunity_carries_both_quote_origins():
+    result = compare_market_responses(
+        "skin-1",
+        [market_response("CS.MONEY", 1000, listing_extra={"source": "wiki_market_summary"}),
+         market_response("CSFloat", 1200, listing_extra={"listing_id": "lot-1"})],
+        deposit_method="crypto", withdraw_method="crypto", use_deposit_fee=True,
+    )
+    opportunity = next(item for item in result["variants"][0]["opportunities"]
+                       if item["buy_marketplace"] == "csmoney")
+    assert opportunity["buy_quote_source"] == "wiki_market_summary"
+    assert opportunity["sell_quote_source"] == "listing"
+    assert opportunity["buy_price_source"] == "lowest_ask"
+
+
+def test_one_provider_exception_preserves_healthy_comparison(monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(market_comparison, "get_csfloat_prices", lambda _id: market_response("CSFloat", 1000))
+    monkeypatch.setattr(market_comparison, "get_csgomarket_prices", lambda _id: market_response("CSGO Market", 1200))
+    monkeypatch.setattr(market_comparison, "get_whitemarket_prices", lambda _id: market_response("WhiteMarket", None))
+    def broken(_id):
+        raise RuntimeError("SECRET")
+    monkeypatch.setattr(market_comparison, "get_csmoney_prices", broken)
+    monkeypatch.setattr(market_comparison, "_cached_liquidity_signals", lambda *_args: {})
+    with caplog.at_level(logging.WARNING):
+        result = market_comparison.get_skin_market_comparison("skin-1")
+    assert result["variants"][0]["opportunities"]
+    assert next(row for row in result["marketplaces"] if row["id"] == "csmoney")["error"]
+    assert "RuntimeError" in caplog.text
+    assert "SECRET" not in caplog.text
+
+
+def test_database_failure_is_not_reported_as_provider_outage(monkeypatch):
+    import psycopg
+    def broken(_id):
+        raise psycopg.OperationalError("database unavailable")
+    monkeypatch.setattr(market_comparison, "get_csfloat_prices", broken)
+    monkeypatch.setattr(market_comparison, "get_csgomarket_prices", lambda _id: market_response("CSGO Market", 1200))
+    monkeypatch.setattr(market_comparison, "get_whitemarket_prices", lambda _id: market_response("WhiteMarket", None))
+    monkeypatch.setattr(market_comparison, "get_csmoney_prices", lambda _id: market_response("CS.MONEY", None))
+    with pytest.raises(psycopg.OperationalError):
+        market_comparison.get_skin_market_comparison("skin-1")

@@ -14,6 +14,26 @@ x-database-environment: &database-environment
   PGPASSWORD: ${POSTGRES_PASSWORD}
 
 services:
+  gluetun:
+    container_name: true-roi-gluetun
+    image: qmcgaw/gluetun:latest
+    logging: *service-logging
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: surfshark
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: "${SURFSHARK_WIREGUARD_PRIVATE_KEY:?Set SURFSHARK_WIREGUARD_PRIVATE_KEY in the VPS .env}"
+      WIREGUARD_ADDRESSES: "${SURFSHARK_WIREGUARD_ADDRESSES:?Set SURFSHARK_WIREGUARD_ADDRESSES in the VPS .env}"
+      SERVER_COUNTRIES: ${SURFSHARK_SERVER_COUNTRIES:-Poland}
+      HTTP_CONTROL_SERVER_ADDRESS: ":8004"
+      TZ: Europe/Warsaw
+    ports:
+      - "8005:8000"
+    restart: unless-stopped
+
   db:
     container_name: true-roi-postgres
     image: postgres:16-alpine
@@ -49,11 +69,13 @@ services:
     container_name: true-roi-api
     image: ghcr.io/despa1r0/true-csgo-roi:${IMAGE_TAG}
     logging: *service-logging
+    network_mode: "service:gluetun"
     environment:
       <<: *database-environment
       CSFLOAT_API_KEY: ${CSFLOAT_API_KEY:-}
       CSFLOAT_CACHE_TTL_SECONDS: ${CSFLOAT_CACHE_TTL_SECONDS:-300}
       CSFLOAT_DETAILS_TTL_SECONDS: ${CSFLOAT_DETAILS_TTL_SECONDS:-600}
+      CSFLOAT_DIAGNOSTIC_LOG: ${CSFLOAT_DIAGNOSTIC_LOG:-1}
       WHITEMARKET_CACHE_TTL_SECONDS: ${WHITEMARKET_CACHE_TTL_SECONDS:-300}
       WHITEMARKET_PARTNER_TOKEN: ${WHITEMARKET_PARTNER_TOKEN:-}
       CSGOMARKET_API_KEY: ${CSGOMARKET_API_KEY:-}
@@ -62,11 +84,11 @@ services:
       CSGOMARKET_DETAILS_TTL_SECONDS: ${CSGOMARKET_DETAILS_TTL_SECONDS:-600}
       CSGOMARKET_HISTORY_INDEX_TTL_SECONDS: ${CSGOMARKET_HISTORY_INDEX_TTL_SECONDS:-3600}
       CSMONEY_CACHE_TTL_SECONDS: ${CSMONEY_CACHE_TTL_SECONDS:-1800}
-    ports:
-      - "8005:8000"
     depends_on:
       catalog-seed:
         condition: service_completed_successfully
+      gluetun:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
       interval: 5s
@@ -78,6 +100,7 @@ services:
     container_name: true-roi-csmoney-crawler
     image: ghcr.io/despa1r0/true-csgo-roi-csmoney:${IMAGE_TAG}
     logging: *service-logging
+    network_mode: "service:gluetun"
     environment:
       <<: *database-environment
       CSGOMARKET_API_KEY: ${CSGOMARKET_API_KEY:-}
@@ -90,6 +113,8 @@ services:
     depends_on:
       catalog-seed:
         condition: service_completed_successfully
+      gluetun:
+        condition: service_healthy
     restart: unless-stopped
 
   csmoney-demand:

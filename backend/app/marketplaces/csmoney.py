@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 STORE_URL = "https://cs.money/pl/market/buy/"
 PAGE_SIZE = 60
 MAX_LISTINGS = 10
+MAX_PRICE_CENTS = 2_147_483_647
 
 
 class CsMoneyRequestError(RuntimeError):
@@ -125,6 +126,8 @@ def extract_capture(
         listings.append(
             {
                 "listing_id": listing_id,
+                "market_hash_name": names["full"],
+                "phase": asset.get("phase"),
                 "price_cents": price_cents,
                 "float_value": float(float_value) if float_value is not None else None,
                 "paint_seed": pattern,
@@ -133,6 +136,8 @@ def extract_capture(
             }
         )
     return {
+        "market_hash_name": market_hash_name,
+        "phase": phase,
         "source_url": source_url or storefront_url(market_hash_name),
         "page_items": len(items),
         "exact_matches": exact_matches,
@@ -148,9 +153,10 @@ def _usd_cents(value: Any) -> int | None:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         return None
-    if not amount.is_finite() or amount < 0:
+    if not amount.is_finite() or amount <= 0 or amount > Decimal(MAX_PRICE_CENTS) / 100:
         return None
-    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    cents = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return cents if 0 < cents <= MAX_PRICE_CENTS else None
 
 
 def _phase_slug(value: Any) -> str | None:
@@ -166,7 +172,7 @@ def _same_market_name(
         return False
     actual_phase = _phase_slug(asset_phase)
     if full == market_hash_name:
-        return expected_phase is None or actual_phase is None or expected_phase == actual_phase
+        return expected_phase is None or expected_phase == actual_phase
     if expected_phase is None or expected_phase != actual_phase:
         return False
     # Doppler and Gamma Doppler listings sometimes insert the phase just

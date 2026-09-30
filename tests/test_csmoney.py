@@ -113,3 +113,36 @@ def test_wiki_minimum_is_a_summary_without_synthetic_listings(monkeypatch):
     assert any("listing_id, price_cents" in sql and "NULL" in sql for sql, _ in statements)
     assert not any("INSERT INTO marketplace_active_listings" in sql for sql, _ in statements)
     assert any("'wiki_market_summary'" in sql for sql, _ in statements)
+
+
+@pytest.mark.parametrize("price", ["0", "0.004", "21474836.48", "1e999", "1e-999"])
+def test_storefront_rejects_zero_and_unstorable_prices(price):
+    with pytest.raises(CsMoneyRequestError, match="invalid computed price"):
+        extract_capture([item("bad", price)], NAME)
+
+
+def test_missing_phase_is_not_accepted_as_a_phase_match():
+    catalog_name = "★ Karambit | Doppler (Factory New)"
+    result = extract_capture([item("missing", 100, catalog_name)], catalog_name, phase="Ruby")
+    assert result["listings"] == []
+
+
+def test_save_rechecks_phase_against_catalogue(monkeypatch):
+    monkeypatch.setattr(csmoney_data, "load_variant_context", lambda _id: {
+        "market_hash_name": "★ Karambit | Doppler (Factory New)", "phase": "Ruby",
+    })
+    capture = extract_capture([
+        item("ruby", 100, "★ Karambit | Doppler Ruby (Factory New)", phase="Ruby")
+    ], "★ Karambit | Doppler (Factory New)", phase="Ruby")
+    capture["listings"][0]["phase"] = "Phase 1"
+    with pytest.raises(ValueError, match="does not match catalogue"):
+        csmoney_data.store_variant_capture("variant", capture)
+
+
+def test_save_rejects_unstorable_wiki_quantity_before_database(monkeypatch):
+    monkeypatch.setattr(csmoney_data, "get_connection", lambda: pytest.fail("database touched"))
+    with pytest.raises(ValueError, match="Invalid CS.MONEY Wiki Market summary"):
+        csmoney_data.store_wiki_market_summary(
+            "variant", {"price_cents": 2578, "quantity": 2_147_483_648},
+            item_url="https://example.com/summary",
+        )

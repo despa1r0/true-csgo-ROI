@@ -39,7 +39,19 @@
     "filtersUnsupported": "This marketplace does not support this filter.", "noStickers": "No stickers", "details": "Open analytics", "estimate": "Estimate {{price}}",
     "snapshotUpdated": "Checked {{date}}", "snapshotStale": "Cached prices may be outdated", "snapshotPartial": "Partial sample: lowest price may be missing", "snapshotQueued": "Refreshing in the background"
   },
+  "marketSource": {
+    "quoteProvenance": "Buy source: {{buy}} · sell source: {{sell}}. Verify current availability before trading.", "quoteTypes": { "unavailable": "unavailable quote", "wiki_market_summary": "Wiki Market aggregate reference", "storefront": "cached CS.MONEY storefront listing", "listing": "concrete listing", "index": "market price index", "best_bid": "buy order" },
+    "listingsAvailable": "Fresh cached listings", "summaryOnly": "Wiki Market summary only", "providerUnavailable": "Provider unavailable", "stale": "Outdated data", "empty": "No matching listings", "partial": "Partially available data",
+    "listings_availableNote": "These are fresh cached listings, not a live availability guarantee. Check the listing on the marketplace before trading.",
+    "summaryNote": "CS.MONEY: the minimum price and aggregate offer count come from Wiki Market. They are not executable or filtered listings; individual listing IDs, float and attachments are unavailable. Check the marketplace price before trading.",
+    "provider_unavailableNote": "CS.MONEY could not provide current market data. A successful API response does not mean the provider is available.",
+    "staleNote": "The snapshot is outdated. Stale quotes must not be used for ROI; check current prices on the marketplace.",
+    "emptyNote": "No concrete listings match the request. This does not guarantee that no offers exist on the marketplace.",
+    "partialNote": "Variants have different source states. Available listings remain visible; missing variants do not mean the entire marketplace is unavailable.",
+    "variantState": "Variant {{variant}}: {{state}}"
+  },
   "analytics": {
+    "selectedVariant": "Selected variant", "openVariant": "Open analytics: {{name}}", "variantOnlyNote": "No concrete listing is selected. Prices and offer counts shown here are market references.", "detailError": "Could not load marketplace details. Try again.", "tradeHistoryError": "Could not load Wiki Trade price history. Try again.",
     "title": "Skin analytics", "history": "Sales history", "active": "Active listings", "quick": "Quick sale", "compare": "Compare",
     "available": "Available history", "points": "{{count}} real sales", "historyUnavailable": "This marketplace does not provide public sales history.",
       "historyEmpty": "No real sales were returned for this period.", "period24h": "24H", "period7d": "7D", "period14d": "14D", "periodAll": "Available",

@@ -1,66 +1,54 @@
 name: Build and deploy
-
 on:
   workflow_run:
     workflows: [CI]
     branches: [main]
     types: [completed]
-  workflow_dispatch:
-
 permissions:
   contents: read
-
 env:
   REGISTRY: ghcr.io
   IMAGE_TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
-
 concurrency:
   group: true-roi-production
   cancel-in-progress: false
-
 jobs:
   build-images:
-    name: Build and push (${{ matrix.name }})
+    name: Publish Docker image (${{ matrix.dockerfile }})
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+      github.event.workflow_run.head_branch == 'main'
     permissions:
       contents: read
       packages: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: application
+          - dockerfile: Dockerfile
             image: despa1r0/true-csgo-roi
-            dockerfile: Dockerfile
             cache-scope: true-roi-application
-          - name: csmoney-worker
+          - dockerfile: Dockerfile.csmoney
             image: despa1r0/true-csgo-roi-csmoney
-            dockerfile: Dockerfile.csmoney
             cache-scope: true-roi-csmoney
     steps:
-      - name: Checkout repository
+      - name: Checkout image commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.IMAGE_TAG }}
           persist-credentials: false
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
-
       - name: Login to GHCR
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push image
+      - name: Build and publish SHA and latest tags
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -71,86 +59,31 @@ jobs:
             ${{ env.REGISTRY }}/${{ matrix.image }}:latest
           cache-from: type=gha,scope=${{ matrix.cache-scope }}
           cache-to: type=gha,mode=max,scope=${{ matrix.cache-scope }}
-
   deploy:
-    name: Deploy to production
+    name: Deploy SHA-pinned images to production
     needs: build-images
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      SSH_DIRECTORY: ${{ github.workspace }}/.deploy-ssh
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
     steps:
-      - name: Checkout repository
+      - name: Checkout deployment commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.IMAGE_TAG }}
           persist-credentials: false
-
-      - name: Check required deployment secrets
+      - name: Validate deployment inputs and configure SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-        run: |
-          for variable in VPS_SSH_KEY VPS_HOST VPS_USER VPS_PORT; do
-            if [[ -z "${!variable}" ]]; then
-              echo "Missing required repository secret: ${variable}" >&2
-              exit 1
-            fi
-          done
-
-      - name: Configure SSH
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          SSH_DIRECTORY: ${{ runner.temp }}/true-roi-ssh
-        run: |
-          install -d -m 700 "${SSH_DIRECTORY}"
-          printf '%s\n' "${VPS_SSH_KEY}" > "${SSH_DIRECTORY}/id_ed25519"
-          chmod 600 "${SSH_DIRECTORY}/id_ed25519"
-          ssh-keyscan -H -p "${VPS_PORT}" "${VPS_HOST}" > "${SSH_DIRECTORY}/known_hosts"
-
-      - name: Copy deployment files
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          SSH_DIRECTORY: ${{ runner.temp }}/true-roi-ssh
-        run: |
-          if [[ ! "${IMAGE_TAG}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid image tag: expected a commit SHA" >&2
-            exit 1
-          fi
-          scp -i "${SSH_DIRECTORY}/id_ed25519" \
-            -o UserKnownHostsFile="${SSH_DIRECTORY}/known_hosts" \
-            -P "${VPS_PORT}" docker-compose.prod.yml \
-            "${VPS_USER}@${VPS_HOST}:/opt/true-roi/docker-compose.prod.yml.${IMAGE_TAG}.staged"
-          scp -i "${SSH_DIRECTORY}/id_ed25519" \
-            -o UserKnownHostsFile="${SSH_DIRECTORY}/known_hosts" \
-            -P "${VPS_PORT}" scripts/deploy-production.sh \
-            "${VPS_USER}@${VPS_HOST}:/opt/true-roi/deploy-production.sh.${IMAGE_TAG}.staged"
-
-      - name: Deploy to VPS
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          SSH_DIRECTORY: ${{ runner.temp }}/true-roi-ssh
-        run: |
-          ssh -i "${SSH_DIRECTORY}/id_ed25519" \
-            -o UserKnownHostsFile="${SSH_DIRECTORY}/known_hosts" \
-            -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
-            "bash '/opt/true-roi/deploy-production.sh.${IMAGE_TAG}.staged' '${IMAGE_TAG}'"
-
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: scripts/ci/deploy-ssh.sh configure
+      - name: Stage production Compose and deployment script
+        run: scripts/ci/deploy-ssh.sh copy
+      - name: Run production deployment
+        run: scripts/ci/deploy-ssh.sh deploy
       - name: Remove SSH credentials
         if: always()
-        env:
-          SSH_DIRECTORY: ${{ runner.temp }}/true-roi-ssh
-        run: |
-          if [[ -d "${SSH_DIRECTORY}" ]]; then
-            rm -f -- "${SSH_DIRECTORY}/id_ed25519"
-            rm -f -- "${SSH_DIRECTORY}/known_hosts"
-            rmdir -- "${SSH_DIRECTORY}"
-          fi
+        run: scripts/ci/deploy-ssh.sh cleanup

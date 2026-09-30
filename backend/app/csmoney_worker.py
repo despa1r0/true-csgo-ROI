@@ -6,6 +6,7 @@ import argparse
 import logging
 import os
 import time
+from urllib.error import HTTPError, URLError
 
 from .csmoney_data import (
     cache_ttl_seconds,
@@ -92,8 +93,29 @@ def _wiki_summary(variant_id: str, context: dict) -> None:
         variant_id, summary, item_url=storefront_url(context["market_hash_name"]),
     )
     complete_refresh_job(variant_id)
-    LOG.debug("CS.MONEY %s: Wiki Market minimum $%.2f, count=%d, partial=true",
-              variant_id, summary["price_cents"] / 100, summary["quantity"])
+    LOG.info("CS.MONEY %s: source=wiki_market_summary result=ok price_cents=%d count=%d partial=true",
+             variant_id, summary["price_cents"], summary["quantity"])
+
+
+def _wiki_failure(variant_id: str, error: Exception, *, storefront_403: bool = False,
+                  attempts: int = 1) -> None:
+    """Log/persist an allowlisted outcome, never provider exception contents."""
+    if isinstance(error, HTTPError):
+        result = "http_403_challenge" if error.code == 403 else "http_error"
+    elif isinstance(error, TimeoutError) or (
+        isinstance(error, URLError) and isinstance(error.reason, TimeoutError)
+    ):
+        result = "timeout"
+    elif isinstance(error, WikiPriceError):
+        result = error.result if error.result in {"empty", "network_error"} else "malformed"
+    elif isinstance(error, ValueError):
+        result = "malformed"
+    else:
+        result = "network_error"
+    prefix = "Storefront 403; " if storefront_403 else ""
+    record_refresh_error(variant_id, f"{prefix}Wiki Market summary unavailable: {result}")
+    defer_refresh_job(variant_id, seconds=min(900, 60 * attempts))
+    LOG.warning("CS.MONEY %s: source=wiki_market_summary result=%s", variant_id, result)
 
 
 def process_one(page) -> bool:
@@ -110,9 +132,7 @@ def process_one(page) -> bool:
         try:
             _wiki_summary(variant_id, context)
         except (WikiPriceError, OSError, TimeoutError, ValueError) as error:
-            record_refresh_error(variant_id, f"Wiki Market summary unavailable: {error}")
-            defer_refresh_job(variant_id, seconds=21600)
-            LOG.debug("CS.MONEY %s: Wiki Market summary unavailable: %s", variant_id, error)
+            _wiki_failure(variant_id, error, attempts=job["attempts"])
         return True
     try:
         capture = capture_variant(
@@ -129,8 +149,8 @@ def process_one(page) -> bool:
             try:
                 _wiki_summary(variant_id, context)
             except (WikiPriceError, OSError, TimeoutError, ValueError) as wiki_error:
-                record_refresh_error(variant_id, f"Storefront 403; Wiki unavailable: {wiki_error}")
-                defer_refresh_job(variant_id, seconds=21600)
+                _wiki_failure(variant_id, wiki_error, storefront_403=True,
+                              attempts=job["attempts"])
             raise
         record_refresh_error(variant_id, message)
         retry_seconds = min(900, 60 * job["attempts"])

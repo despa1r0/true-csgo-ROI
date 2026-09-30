@@ -131,6 +131,8 @@ docker compose down -v
 
 Подробное описание frontend-архитектуры и ограничений: [`docs/FRONTEND.md`](docs/FRONTEND.md).
 
+Аудит CS.MONEY с приоритетами исправлений: [`docs/CSMONEY_REVIEW.md`](docs/CSMONEY_REVIEW.md).
+
 ## Как сейчас устроен проект
 
 ```text

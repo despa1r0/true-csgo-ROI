@@ -76,6 +76,8 @@ main() {
     local cleanup_command
     printf -v cleanup_command 'cleanup %q %q %q' \
         "${staged_compose}" "${staged_script}" "${anonymous_docker_config}"
+    # Expand now while main's local paths exist.
+    # shellcheck disable=SC2064
     trap "${cleanup_command}" EXIT
 
     export DOCKER_CONFIG="${anonymous_docker_config}"

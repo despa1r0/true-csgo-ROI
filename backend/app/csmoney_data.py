@@ -116,6 +116,20 @@ def defer_refresh_job(variant_id: str, *, seconds: int = 300) -> None:
         )
 
 
+def release_refresh_job(variant_id: str, *, seconds: int = 10) -> None:
+    """Retry a browser failure without lowering priority or counting a provider attempt."""
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE csmoney_refresh_jobs
+            SET lease_until = NOW() + (%s * INTERVAL '1 second'),
+                attempts = GREATEST(attempts - 1, 0)
+            WHERE variant_id = %s
+            """,
+            (seconds, variant_id),
+        )
+
+
 def load_variant_context(variant_id: str) -> dict[str, Any] | None:
     with get_connection() as connection:
         row = connection.execute(

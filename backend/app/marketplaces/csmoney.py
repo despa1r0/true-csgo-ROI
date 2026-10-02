@@ -27,6 +27,27 @@ class CsMoneyBlockedError(CsMoneyRequestError):
     """A rate limit or security challenge has closed the storefront circuit."""
 
 
+class CsMoneyBrowserError(CsMoneyRequestError):
+    """The page/context/browser must be replaced before another request."""
+
+
+def is_browser_failure(error: Exception) -> bool:
+    """Recognize transport/crash failures without importing Playwright in the API."""
+    return isinstance(error, CsMoneyBrowserError) or type(error).__name__ == "TargetClosedError" or any(
+        marker in str(error).casefold() for marker in (
+            "target page, context or browser has been closed", "target closed",
+            "browser has been closed", "browser closed", "browser crashed", "page crashed",
+            "page has been closed", "context closed", "connection closed",
+        )
+    )
+
+
+def _page_error(error: Exception, message: str) -> CsMoneyRequestError:
+    if is_browser_failure(error):
+        return CsMoneyBrowserError("CS.MONEY browser session closed or crashed")
+    return CsMoneyRequestError(f"{message}: {error}")
+
+
 def storefront_url(market_hash_name: str) -> str:
     return STORE_URL + "?" + urlencode(
         {"search": market_hash_name, "order": "asc", "sort": "price"}
@@ -45,7 +66,7 @@ def capture_variant(
     try:
         response = page.goto(url, wait_until="domcontentloaded", timeout=120_000)
     except Exception as error:
-        raise CsMoneyRequestError(f"CS.MONEY page failed: {error}") from error
+        raise _page_error(error, "CS.MONEY page failed") from error
     if response is not None and response.status in (403, 429):
         raise CsMoneyBlockedError(f"CS.MONEY page returned {response.status}")
     if response is None or response.status != 200:
@@ -60,7 +81,7 @@ def capture_search(page: Any, query: str, *, limit: int = 20) -> dict[str, Any]:
     try:
         response = page.goto(url, wait_until="domcontentloaded", timeout=120_000)
     except Exception as error:
-        raise CsMoneyRequestError(f"CS.MONEY search failed: {error}") from error
+        raise _page_error(error, "CS.MONEY search failed") from error
     if response is not None and response.status in (403, 429):
         raise CsMoneyBlockedError(f"CS.MONEY page returned {response.status}")
     if response is None or response.status != 200:
@@ -107,7 +128,7 @@ def _embedded_items(page: Any) -> list[dict[str, Any]]:
     try:
         scripts = page.locator('script[type="application/json"]').all_text_contents()
     except Exception as error:
-        raise CsMoneyRequestError(f"Could not read CS.MONEY page data: {error}") from error
+        raise _page_error(error, "Could not read CS.MONEY page data") from error
     for script in scripts:
         try:
             payload = json.loads(script)
@@ -123,7 +144,9 @@ def _embedded_items(page: Any) -> list[dict[str, Any]]:
             return items
     try:
         body = page.content().casefold()
-    except Exception:
+    except Exception as error:
+        if is_browser_failure(error):
+            raise _page_error(error, "Could not read CS.MONEY page") from error
         body = ""
     if any(marker in body for marker in ("cloudflare", "just a moment", "cf-challenge")):
         raise CsMoneyBlockedError("CS.MONEY Cloudflare challenge")

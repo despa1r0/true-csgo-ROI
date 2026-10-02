@@ -101,6 +101,19 @@ def claim_search(*, lease_seconds: int = 180) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def defer_search(request_id: UUID, *, seconds: int = 10) -> None:
+    """Keep a search pending through a browser restart, retaining its original expiry."""
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE csmoney_text_search_jobs
+            SET lease_until = NOW() + (%s * INTERVAL '1 second')
+            WHERE request_id = %s AND status = 'running' AND expires_at > NOW()
+            """,
+            (seconds, request_id),
+        )
+
+
 def finish_search(request_id: UUID, status: str, *, result: dict | None = None,
                   error: str | None = None) -> None:
     if status not in {"complete", "empty", "blocked", "error"}:

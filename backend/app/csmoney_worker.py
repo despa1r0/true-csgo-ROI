@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from pathlib import Path
 import time
 from urllib.error import HTTPError, URLError
 
@@ -16,15 +17,16 @@ from .csmoney_data import (
     enqueue_variants,
     load_variant_context,
     record_refresh_error,
+    release_refresh_job,
     store_variant_capture,
     store_wiki_market_summary,
 )
 from .csmoney_demand import get_observed_sales_priorities
 from .csmoney_wiki import WikiPriceError, fetch_market_summary
-from .csmoney_search import claim_search, finish_search
+from .csmoney_search import claim_search, defer_search, finish_search
 from .database import ensure_schema, get_connection
-from .marketplaces.csmoney import (CsMoneyBlockedError, CsMoneyRequestError,
-                                  capture_search, capture_variant, storefront_url)
+from .marketplaces.csmoney import (CsMoneyBlockedError, CsMoneyBrowserError, CsMoneyRequestError,
+                                  capture_search, capture_variant, is_browser_failure, storefront_url)
 
 
 LOG = logging.getLogger(__name__)
@@ -36,6 +38,29 @@ def _positive_env(name: str, default: int) -> int:
     except ValueError:
         return default
     return value if value > 0 else default
+
+
+def _browser_retry_delay() -> int:
+    return _positive_env("CSMONEY_BROWSER_RESTART_DELAY_SECONDS", 10)
+
+
+def container_memory_bytes() -> int | None:
+    """Read total worker/container usage, including Firefox, on cgroup v2 or v1."""
+    for filename in ("/sys/fs/cgroup/memory.current",
+                     "/sys/fs/cgroup/memory/memory.usage_in_bytes"):
+        try:
+            value = int(Path(filename).read_text().strip())
+        except (OSError, ValueError):
+            continue
+        if value >= 0:
+            return value
+    return None
+
+
+def _new_browser():
+    from camoufox.sync_api import Camoufox
+
+    return Camoufox(headless=True)
 
 
 def schedule_candidates(*, batch_size: int = 30) -> int:
@@ -135,20 +160,32 @@ def process_search(page, *, circuit_open: bool = False) -> bool:
         capture = capture_search(tab, job["query"])
         finish_search(request_id, "complete" if capture["listings"] else "empty",
                       result=capture)
+    except CsMoneyBrowserError:
+        defer_search(request_id, seconds=_browser_retry_delay())
+        raise
     except CsMoneyBlockedError as error:
         finish_search(request_id, "blocked", error=str(error))
         raise
     except CsMoneyRequestError as error:
         finish_search(request_id, "error", error=str(error))
-    except Exception:
+    except Exception as error:
+        # new_page() can fail before the adapter gets a chance to classify it.
+        if is_browser_failure(error):
+            defer_search(request_id, seconds=_browser_retry_delay())
+            raise CsMoneyBrowserError("CS.MONEY search browser unavailable") from error
         finish_search(request_id, "error", error="Search failed; inspect worker logs")
         LOG.exception("Unexpected CS.MONEY search failure for %s", request_id)
     finally:
         if tab is not None:
             try:
                 tab.close()
-            except Exception:
-                LOG.exception("Could not close CS.MONEY search tab for %s", request_id)
+            except Exception as error:
+                if is_browser_failure(error):
+                    # Preserve the request's outcome (especially a 403). The outer
+                    # loop checks the shared browser before claiming another job.
+                    LOG.debug("CS.MONEY search tab already unavailable for %s", request_id)
+                else:
+                    LOG.exception("Could not close CS.MONEY search tab for %s", request_id)
     return True
 
 
@@ -175,6 +212,10 @@ def process_one(page) -> bool:
             phase=context.get("phase"),
         )
         stored = store_variant_capture(variant_id, capture)
+    except CsMoneyBrowserError:
+        record_refresh_error(variant_id, "Browser session unavailable; restarting collector browser")
+        release_refresh_job(variant_id, seconds=_browser_retry_delay())
+        raise
     except CsMoneyRequestError as error:
         message = str(error)
         if isinstance(error, CsMoneyBlockedError) or "403" in message or "429" in message:
@@ -204,14 +245,17 @@ def process_one(page) -> bool:
 
 
 def run(*, once: bool = False) -> None:
-    """Reuse one browser across jobs and keep requests at a bounded pace."""
-    from camoufox.sync_api import Camoufox
-
+    """Reuse bounded browser sessions; recover infrastructure failures separately from 403s."""
     with get_connection() as connection:
         ensure_schema(connection)
     request_interval = _positive_env("CSMONEY_MIN_REQUEST_INTERVAL_SECONDS", 10)
     schedule_interval = _positive_env("CSMONEY_SCHEDULE_INTERVAL_SECONDS", 300)
     storefront_retry = _positive_env("CSMONEY_STOREFRONT_RETRY_SECONDS", 21600)
+    max_session_seconds = _positive_env("CSMONEY_BROWSER_MAX_SESSION_SECONDS", 1800)
+    max_session_jobs = _positive_env("CSMONEY_BROWSER_MAX_SESSION_JOBS", 100)
+    memory_limit = _positive_env("CSMONEY_BROWSER_MEMORY_LIMIT_MB", 1536) * 1024 * 1024
+    max_restarts = _positive_env("CSMONEY_BROWSER_MAX_RESTARTS", 3)
+    restart_failures = 0
     next_schedule = 0.0
     last_request = 0.0
     blocked_until = 0.0
@@ -233,35 +277,83 @@ def run(*, once: bool = False) -> None:
             if not processed:
                 time.sleep(5)
             continue
-        challenged = False
-        with Camoufox(headless=True) as browser:
-            page = browser.new_page()
-            while True:
-                now = time.monotonic()
-                if now >= next_schedule:
-                    scheduled = schedule_candidates()
-                    LOG.info("CS.MONEY scheduled %d candidate jobs", scheduled)
-                    next_schedule = now + schedule_interval
-                remaining = request_interval - (time.monotonic() - last_request)
-                if last_request and remaining > 0:
-                    time.sleep(remaining)
+        restart_reason = None
+        session_jobs = 0
+        session_started = time.monotonic()
+        try:
+            with _new_browser() as browser:
                 try:
-                    processed = process_search(page) or process_one(page)
-                except CsMoneyRequestError:
-                    challenged = True
-                    break
-                if processed:
-                    last_request = time.monotonic()
-                if once:
-                    return
-                if not processed:
-                    time.sleep(5)
-        if once:
-            return
-        if challenged:
+                    page = browser.new_page()
+                except Exception as error:
+                    if not is_browser_failure(error):
+                        raise
+                    raise CsMoneyBrowserError("CS.MONEY browser closed during page creation") from error
+                session_started = time.monotonic()
+                next_metrics = session_started
+                LOG.info("CS.MONEY browser session started")
+                while True:
+                    now = time.monotonic()
+                    if now >= next_schedule:
+                        scheduled = schedule_candidates()
+                        LOG.info("CS.MONEY scheduled %d candidate jobs", scheduled)
+                        next_schedule = now + schedule_interval
+                    remaining = request_interval - (time.monotonic() - last_request)
+                    if last_request and remaining > 0:
+                        time.sleep(remaining)
+                    # Check before claiming a job: a disconnected browser must not drain the queue.
+                    if page.is_closed() or not browser.is_connected():
+                        raise CsMoneyBrowserError("CS.MONEY browser disconnected before request")
+                    memory = container_memory_bytes()
+                    age = time.monotonic() - session_started
+                    if time.monotonic() >= next_metrics:
+                        LOG.info("CS.MONEY browser session jobs=%d age_seconds=%d memory_mb=%s",
+                                 session_jobs, int(age),
+                                 memory // (1024 * 1024) if memory is not None else "unavailable")
+                        next_metrics = time.monotonic() + schedule_interval
+                    if memory is not None and memory >= memory_limit:
+                        restart_reason = "memory"
+                    elif age >= max_session_seconds:
+                        restart_reason = "age"
+                    elif session_jobs >= max_session_jobs:
+                        restart_reason = "job_limit"
+                    if restart_reason:
+                        LOG.info("CS.MONEY browser rotation reason=%s jobs=%d age_seconds=%d memory_mb=%s",
+                                 restart_reason, session_jobs, int(age),
+                                 memory // (1024 * 1024) if memory is not None else "unavailable")
+                        break
+                    try:
+                        processed = process_search(page) or process_one(page)
+                    except CsMoneyRequestError as error:
+                        # Failed navigations still count towards the global request pace.
+                        last_request = time.monotonic()
+                        if isinstance(error, CsMoneyBrowserError):
+                            raise
+                        restart_reason = "blocked"
+                        break
+                    if processed:
+                        last_request = time.monotonic()
+                        session_jobs += 1
+                        restart_failures = 0
+                    if once:
+                        return
+                    if not processed:
+                        time.sleep(5)
+        except CsMoneyBrowserError:
+            restart_reason = "browser_unavailable"
+        if restart_reason == "blocked":
             blocked_until = time.monotonic() + storefront_retry
             LOG.warning("CS.MONEY storefront blocked; using Wiki Market summaries for %ds",
                         storefront_retry)
+            if once:
+                return
+        elif restart_reason in {"browser_unavailable", "memory"}:
+            restart_failures += 1
+            LOG.warning("CS.MONEY browser restart reason=%s consecutive_failures=%d",
+                        restart_reason, restart_failures)
+            if restart_failures >= max_restarts:
+                # Exit so Docker can also reclaim leaked/orphaned browser processes.
+                raise RuntimeError("CS.MONEY browser recovery exhausted; worker restart required")
+            time.sleep(_browser_retry_delay())
 
 
 def main() -> None:

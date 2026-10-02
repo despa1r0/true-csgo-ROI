@@ -21,6 +21,11 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
 
+cleanup() {
+    rm -f -- "$1" "$2"
+    rmdir -- "$3" 2>/dev/null || true
+}
+
 wait_for_healthy() {
     local container_name="$1"
     local compose_service="$2"
@@ -67,11 +72,11 @@ main() {
 
     local anonymous_docker_config
     anonymous_docker_config=$(mktemp -d)
-    cleanup() {
-        rm -f -- "${staged_compose}" "${staged_script}"
-        rmdir -- "${anonymous_docker_config}" 2>/dev/null || true
-    }
-    trap cleanup EXIT
+    # Capture paths now: main's local variables are gone on a successful EXIT.
+    local cleanup_command
+    printf -v cleanup_command 'cleanup %q %q %q' \
+        "${staged_compose}" "${staged_script}" "${anonymous_docker_config}"
+    trap "${cleanup_command}" EXIT
 
     export DOCKER_CONFIG="${anonymous_docker_config}"
     export IMAGE_TAG="${image_tag}"

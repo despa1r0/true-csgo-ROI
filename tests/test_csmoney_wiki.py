@@ -129,3 +129,62 @@ def test_market_summary_rejects_missing_or_ambiguous_variant(monkeypatch):
         csmoney_wiki.fetch_market_summary(
             "AK-47 | Redline", "AK-47 | Redline (Field-Tested)"
         )
+
+
+@pytest.mark.parametrize("rows,expected", [
+    ([], "empty"),
+    ([{"name": "target", "source": {"market": {"lowestPrice": None, "count": 0}}}], "empty"),
+    ([{"name": "other"}], "empty"),
+    ([{"name": "target", "source": None}], "empty"),
+    (None, "malformed"),
+    ([{"name": "target", "source": {"market": {"lowestPrice": "bad", "count": 1}}}], "malformed"),
+    ([{"name": "target"}, {"name": "target"}], "malformed"),
+])
+def test_market_summary_classifies_empty_and_malformed(monkeypatch, rows, expected):
+    monkeypatch.setattr(csmoney_wiki, "_query", lambda *_args: {"get_min_available": rows})
+    with pytest.raises(csmoney_wiki.WikiPriceError) as caught:
+        csmoney_wiki.fetch_market_summary("skin", "target")
+    assert caught.value.result == expected
+
+
+@pytest.mark.parametrize("exception", [
+    __import__("http.client", fromlist=["IncompleteRead"]).IncompleteRead(b"partial"),
+    __import__("http.client", fromlist=["BadStatusLine"]).BadStatusLine("SECRET"),
+])
+def test_interrupted_wiki_response_is_a_redacted_network_error(monkeypatch, exception):
+    class Response:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _size):
+            raise exception
+
+    monkeypatch.setattr(csmoney_wiki, "urlopen", lambda *_args, **_kwargs: Response())
+    with pytest.raises(csmoney_wiki.WikiPriceError, match="interrupted") as raised:
+        csmoney_wiki._query("query", {})
+    assert raised.value.result == "network_error"
+    assert "SECRET" not in str(raised.value)
+
+
+@pytest.mark.parametrize("price", ["0.004", "1e-999", "1e999", "21474836.48"])
+def test_wiki_rejects_zero_and_unstorable_prices(price):
+    assert csmoney_wiki._usd_cents(price) is None
+
+
+@pytest.mark.parametrize("count", [2_147_483_647, 2_147_483_648])
+def test_market_summary_quantity_respects_postgresql_integer(monkeypatch, count):
+    monkeypatch.setattr(csmoney_wiki, "_query", lambda *_args: {
+        "get_min_available": [{"name": "target", "source": {"market": {
+            "lowestPrice": "25.78", "count": count,
+        }}}],
+    })
+    if count == 2_147_483_647:
+        assert csmoney_wiki.fetch_market_summary("skin", "target")["quantity"] == count
+    else:
+        with pytest.raises(csmoney_wiki.WikiPriceError, match="invalid"):
+            csmoney_wiki.fetch_market_summary("skin", "target")

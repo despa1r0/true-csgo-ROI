@@ -1,0 +1,83 @@
+name: true-roi-csmoney-test
+
+x-worker-image: &worker-image
+  image: true-roi-csmoney-test:local
+  build:
+    context: .
+    dockerfile: Dockerfile.csmoney
+
+x-database-environment: &database-environment
+  PGHOST: db
+  PGPORT: "5432"
+  PGDATABASE: ${POSTGRES_DB:-true_roi}
+  PGUSER: ${POSTGRES_USER:-true_roi}
+  PGPASSWORD: ${POSTGRES_PASSWORD:-yourpassword}
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: surfshark
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: "${SURFSHARK_WIREGUARD_PRIVATE_KEY:?Set SURFSHARK_WIREGUARD_PRIVATE_KEY in .env}"
+      WIREGUARD_ADDRESSES: "${SURFSHARK_WIREGUARD_ADDRESSES:?Set SURFSHARK_WIREGUARD_ADDRESSES in .env}"
+      SERVER_COUNTRIES: ${SURFSHARK_SERVER_COUNTRIES:-Poland}
+      HTTP_CONTROL_SERVER_ADDRESS: ":8004"
+      TZ: Europe/Warsaw
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-true_roi}
+      POSTGRES_USER: ${POSTGRES_USER:-true_roi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yourpassword}
+    volumes:
+      - csmoney_test_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  catalog-seed:
+    <<: *worker-image
+    command: ["python", "-m", "backend.app.seed_catalog"]
+    environment:
+      <<: *database-environment
+      CATALOG_SOURCE_URL: ${CATALOG_SOURCE_URL:-https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins_not_grouped.json}
+      CATALOG_GROUPED_SOURCE_URL: ${CATALOG_GROUPED_SOURCE_URL:-https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins.json}
+      CATALOG_EXTRA_SOURCE_BASE_URL: ${CATALOG_EXTRA_SOURCE_BASE_URL:-https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  csmoney-worker:
+    <<: *worker-image
+    command: ["python", "-m", "backend.app.csmoney_worker"]
+    network_mode: "service:gluetun"
+    shm_size: 512mb
+    environment:
+      <<: *database-environment
+      CSGOMARKET_API_KEY: ${CSGOMARKET_API_KEY:-}
+      CSGOMARKET_MAX_REQUESTS_PER_SECOND: ${CSGOMARKET_MAX_REQUESTS_PER_SECOND:-0.5}
+      CSMONEY_CACHE_TTL_SECONDS: ${CSMONEY_CACHE_TTL_SECONDS:-1800}
+      CSMONEY_CRAWL_TTL_SECONDS: ${CSMONEY_CRAWL_TTL_SECONDS:-86400}
+      CSMONEY_MIN_REQUEST_INTERVAL_SECONDS: ${CSMONEY_MIN_REQUEST_INTERVAL_SECONDS:-10}
+      CSMONEY_STOREFRONT_RETRY_SECONDS: ${CSMONEY_STOREFRONT_RETRY_SECONDS:-21600}
+      CSMONEY_SCHEDULE_INTERVAL_SECONDS: ${CSMONEY_SCHEDULE_INTERVAL_SECONDS:-300}
+    depends_on:
+      catalog-seed:
+        condition: service_completed_successfully
+      gluetun:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  csmoney_test_postgres:

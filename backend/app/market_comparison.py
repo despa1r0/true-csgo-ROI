@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+import logging
 import os
 from typing import Any
+
+import psycopg
 
 from .csgomarket_data import (
     get_csgomarket_prices,
@@ -31,6 +34,7 @@ MARKET_RESPONSE_KEYS = {
     "CS.MONEY": "csmoney",
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
+LOG = logging.getLogger(__name__)
 
 
 def _fast_buy_function(marketplace: str):
@@ -55,16 +59,27 @@ def get_skin_market_comparison(
     profit_mode: str = "smart",
 ) -> dict[str, Any]:
     """Load all cached indexes concurrently and compare every exact variant."""
+    readers = [
+        ("CSFloat", get_csfloat_prices),
+        ("CSGO Market", get_csgomarket_prices),
+        ("WhiteMarket", get_whitemarket_prices),
+        ("CS.MONEY", get_csmoney_prices),
+    ]
     with ThreadPoolExecutor(max_workers=4) as executor:
-        csfloat_future = executor.submit(get_csfloat_prices, skin_id)
-        csgomarket_future = executor.submit(get_csgomarket_prices, skin_id)
-        whitemarket_future = executor.submit(get_whitemarket_prices, skin_id)
-        csmoney_future = executor.submit(get_csmoney_prices, skin_id)
-        csfloat = csfloat_future.result()
-        csgomarket = csgomarket_future.result()
-        whitemarket = whitemarket_future.result()
-        csmoney = csmoney_future.result()
-    market_responses = [csfloat, csgomarket, whitemarket, csmoney]
+        futures = [(name, executor.submit(reader, skin_id)) for name, reader in readers]
+        market_responses = []
+        for name, future in futures:
+            try:
+                market_responses.append(future.result())
+            except psycopg.Error:
+                # A shared database outage is not provider unavailability.
+                raise
+            except Exception as error:
+                LOG.warning("%s price source failed: %s", name, type(error).__name__)
+                market_responses.append({
+                    "marketplace": name, "variants": [],
+                    "error": "Price source unavailable",
+                })
     quick_sell_prices = (
         _load_quick_sell_prices(market_responses)
         if profit_mode == "quick_flip"
@@ -101,7 +116,7 @@ def compare_market_responses(
     for response in market_responses:
         marketplace_name = response["marketplace"]
         marketplace_key = MARKET_RESPONSE_KEYS[marketplace_name]
-        marketplace_errors = []
+        marketplace_errors = [response["error"]] if response.get("error") else []
         for item in response.get("variants", []):
             variant = variants.setdefault(
                 item["variant_id"],
@@ -225,6 +240,8 @@ def _profit_directions(
                         sell_marketplace,
                         buy_listing["price_cents"],
                         sell_price_cents,
+                        buy_quote_source=_quote_source(buy_marketplace, buy_listing),
+                        sell_quote_source="best_bid",
                         deposit_method=deposit_method,
                         withdraw_method=withdraw_method,
                         use_deposit_fee=use_deposit_fee,
@@ -255,6 +272,8 @@ def _profit_directions(
                     sell_marketplace,
                     buy_listing["price_cents"],
                     sell_listing["price_cents"],
+                    buy_quote_source=_quote_source(buy_marketplace, buy_listing),
+                    sell_quote_source=_quote_source(sell_marketplace, sell_listing),
                     deposit_method=deposit_method,
                     withdraw_method=withdraw_method,
                     use_deposit_fee=use_deposit_fee,
@@ -266,12 +285,22 @@ def _profit_directions(
     return opportunities
 
 
+def _quote_source(marketplace: str, listing: dict[str, Any]) -> str:
+    if listing.get("source"):
+        return listing["source"]
+    if listing.get("listing_id") is not None:
+        return "storefront" if marketplace == "csmoney" else "listing"
+    return "index"
+
+
 def _calculate_direction(
     buy_marketplace: str,
     sell_marketplace: str,
     buy_price_cents: int,
     sell_price_cents: int,
     *,
+    buy_quote_source: str,
+    sell_quote_source: str,
     deposit_method: str,
     withdraw_method: str,
     use_deposit_fee: bool,
@@ -302,6 +331,8 @@ def _calculate_direction(
         "sell_marketplace": sell_marketplace,
         "profit_mode": profit_mode,
         "sell_mode": sell_mode,
+        "buy_quote_source": buy_quote_source,
+        "sell_quote_source": sell_quote_source,
         "buy_price_source": "lowest_ask",
         "sell_price_source": (
             "best_bid" if sell_mode == "fast_buy" else "lowest_ask"

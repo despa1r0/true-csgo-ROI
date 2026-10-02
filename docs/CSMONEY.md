@@ -1,5 +1,38 @@
 # CS.MONEY
 
+## Поиск предмета вне каталога
+
+Обычный `/api/items/search` работает только с локальной БД. Если он не находит
+совпадений и фильтры каталога не выбраны, интерфейс предлагает отдельную кнопку
+«Искать на CS.MONEY». Набор текста и повторные клики сами по себе запросов к
+площадке не создают. `POST /api/market/csmoney/search` принимает JSON
+`{"query":"..."}`, повторно проверяет локальный каталог и возвращает `202` с
+`request_id` и `status`. Запрос длиной 2–100 печатных символов нормализуется;
+одинаковые запросы (без учёта регистра и лишних пробелов) совместно используют
+одну активную задачу. `GET /api/market/csmoney/search/{request_id}` выдаёт
+`queued`, `running`, `complete`, `empty`, `blocked`, `error` или `expired`, время,
+ошибку и JSON результата.
+
+Отдельная таблица `csmoney_text_search_jobs` не ссылается на `variant_id`.
+Воркер обрабатывает её перед `csmoney_refresh_jobs`: открывает новую вкладку
+через `page.context.new_page()` в текущей браузерной сессии, закрывает её после
+снимка и использует тот же интервал между обращениями к витрине. Никакого
+Playwright из API и второго браузера нет. Синхронный воркер выполняет задачи
+последовательно. При 403, 429 или Cloudflare challenge поиск получает `blocked`,
+а общий circuit breaker приостанавливает обращения к витрине на время
+`CSMONEY_STOREFRONT_RETRY_SECONDS`. Обход защиты не выполняется.
+
+Результат хранится 30 минут после завершения; незавершённая задача истекает
+через 30 минут после создания. По истечении срока JSON удаляется при следующей
+операции с очередью, старый `request_id` показывает `expired` ещё до суток,
+а новый запрос создаёт новую задачу. Выдаются максимум 20 лотов
+первой отсортированной страницы: фактическое название, ID лота, цена в USD
+центах, ссылка на поиск и доступные float, seed, фаза и изображение. На полной
+странице результат помечается `is_partial`: следующие страницы не проверены.
+Ссылка ведёт на поиск по площадке, поскольку прямая ссылка по ID лота не
+подтверждена. Ни `skins`, ни `skin_variants`, ни таблицы обычных котировок не
+пополняются: для расчёта ROI нужен проверенный canonical ID и вариант.
+
 > **Состояние production на 21 сентября 2026 года:** запросы с VPS к storefront
 > получают HTTP 403, поэтому конкретные лоты недоступны. Резервный Wiki GraphQL
 > также может блокироваться Cloudflare; его успешная работа с VPS пока не
@@ -86,17 +119,79 @@ CS.MONEY пока не предоставляются. Ссылка лота в�
 
 ## Локальный запуск
 
-```powershell
-docker compose up --build
+Для проверки воркера через VPN используйте отдельный файл
+[`docker-compose.csmoney-test.yml`](../docker-compose.csmoney-test.yml).
+Он поднимает PostgreSQL, импорт каталога, Gluetun и CS.MONEY-воркер. Образ
+воркера собирается из текущего локального кода через `Dockerfile.csmoney`;
+тот же образ используется для импорта каталога, поэтому сборка frontend не нужна.
+
+Запускайте команды из корня проекта. Нужен Docker Engine или Docker Desktop
+в режиме Linux containers. Если `.env` ещё нет, скопируйте `.env.example` в `.env`.
+Используются существующие настройки Surfshark WireGuard:
+
+```dotenv
+SURFSHARK_WIREGUARD_PRIVATE_KEY=ваш_ключ
+SURFSHARK_WIREGUARD_ADDRESSES=адрес_из_WireGuard_конфига
+SURFSHARK_SERVER_COUNTRIES=Poland
 ```
 
-Для отдельной проверки страницы без записи в БД:
+Первый запуск скачивает браузер Camoufox при сборке образа и импортирует
+каталог в тестовую БД. Воркер стартует после успешного импорта и готовности VPN.
+Его сетевой режим `service:gluetun` направляет запросы через Gluetun, как
+в production. Ключи CSFloat и CSGO Market для этого стенда не обязательны.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements-csmoney.txt
-.\.venv\Scripts\python.exe -m camoufox fetch
-.\.venv\Scripts\python.exe -m backend.probe_csmoney 'AK-47 | Redline (Field-Tested)'
+docker compose -f docker-compose.csmoney-test.yml up --build -d
+docker compose -f docker-compose.csmoney-test.yml logs -f --tail=100 gluetun catalog-seed csmoney-worker
 ```
 
-На production CI собирает второй образ из `Dockerfile.csmoney`; Compose
-запускает его после импорта каталога. Настройки находятся в `.env.example`.
+В логах Gluetun должно быть успешное подключение, у `catalog-seed` —
+`Catalogue is ready`, а у воркера — количество добавленных задач и результаты
+их обработки. `source=wiki_market_summary result=ok` означает успешную
+Wiki-сводку; это не подтверждение получения storefront-лотов. Ответ 403
+по-прежнему включает паузу storefront, даже при работающем VPN.
+
+Проверка состояния контейнеров:
+
+```powershell
+docker compose -f docker-compose.csmoney-test.yml ps --all
+```
+
+Для одного прохода вместо фоновой работы сначала остановите воркер,
+оставив готовые БД и VPN, затем запустите его с `--once`:
+
+```powershell
+docker compose -f docker-compose.csmoney-test.yml stop csmoney-worker
+docker compose -f docker-compose.csmoney-test.yml run --rm --no-deps csmoney-worker python -m backend.app.csmoney_worker --once
+```
+
+`--once` обрабатывает одну готовую задачу и завершает процесс; результат
+провайдера проверяйте по логам, а не только по коду завершения.
+
+Остановка стенда с сохранением тестовой БД:
+
+```powershell
+docker compose -f docker-compose.csmoney-test.yml down
+```
+
+Стенд использует отдельный Compose project `true-roi-csmoney-test` и volume
+`csmoney_test_postgres`; порты на хост не публикуются. Для удаления именно
+тестовой БД добавьте `--volumes` к команде `down`.
+
+Для запуска всего приложения без этого VPN-стенда остаётся
+`docker compose up --build`. На production GitHub Actions собирает второй
+образ из `Dockerfile.csmoney`; VPS скачивает его из GHCR.
+
+## Python-зависимости
+
+Три requirements-файла разделяют разные окружения:
+
+| Файл | Назначение | Дополнительно к общей базе |
+| --- | --- | --- |
+| `backend/requirements.txt` | API и общие модули | FastAPI, Pydantic, Uvicorn, python-dotenv, Psycopg |
+| `backend/requirements-csmoney.txt` | Браузерный воркер | Camoufox |
+| `backend/requirements-dev.txt` | Тесты | pytest |
+
+Файлы воркера и тестов подключают базовый через `-r requirements.txt`;
+дублирования общего списка нет. Локальный Docker-стенд устанавливает нужные
+зависимости и браузер внутри образа, вручную устанавливать их на хост не нужно.

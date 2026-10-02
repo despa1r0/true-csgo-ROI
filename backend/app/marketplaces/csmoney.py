@@ -16,10 +16,15 @@ from urllib.parse import urlencode
 STORE_URL = "https://cs.money/pl/market/buy/"
 PAGE_SIZE = 60
 MAX_LISTINGS = 10
+MAX_PRICE_CENTS = 2_147_483_647
 
 
 class CsMoneyRequestError(RuntimeError):
     """The storefront could not provide a usable price-sorted capture."""
+
+
+class CsMoneyBlockedError(CsMoneyRequestError):
+    """A rate limit or security challenge has closed the storefront circuit."""
 
 
 def storefront_url(market_hash_name: str) -> str:
@@ -41,10 +46,61 @@ def capture_variant(
         response = page.goto(url, wait_until="domcontentloaded", timeout=120_000)
     except Exception as error:
         raise CsMoneyRequestError(f"CS.MONEY page failed: {error}") from error
+    if response is not None and response.status in (403, 429):
+        raise CsMoneyBlockedError(f"CS.MONEY page returned {response.status}")
     if response is None or response.status != 200:
         status = response.status if response else "no response"
         raise CsMoneyRequestError(f"CS.MONEY page returned {status}")
     return extract_capture(_embedded_items(page), market_hash_name, phase=phase, limit=limit, source_url=url)
+
+
+def capture_search(page: Any, query: str, *, limit: int = 20) -> dict[str, Any]:
+    """Search the first sorted storefront page using an existing page/context."""
+    url = storefront_url(query)
+    try:
+        response = page.goto(url, wait_until="domcontentloaded", timeout=120_000)
+    except Exception as error:
+        raise CsMoneyRequestError(f"CS.MONEY search failed: {error}") from error
+    if response is not None and response.status in (403, 429):
+        raise CsMoneyBlockedError(f"CS.MONEY page returned {response.status}")
+    if response is None or response.status != 200:
+        raise CsMoneyRequestError(f"CS.MONEY page returned {response.status if response else 'no response'}")
+    items = _embedded_items(page)
+    parsed = []
+    seen_ids: set[str] = set()
+    for item in items:
+        pricing, asset = item.get("pricing"), item.get("asset")
+        if not isinstance(pricing, dict) or not isinstance(asset, dict):
+            raise CsMoneyRequestError("CS.MONEY listing has invalid data")
+        price_cents = _usd_cents(pricing.get("computed"))
+        names = asset.get("names")
+        listing_id = item.get("id")
+        name = names.get("full") if isinstance(names, dict) else None
+        if (price_cents is None or not isinstance(name, str) or not name.strip()
+                or not isinstance(listing_id, (str, int)) or isinstance(listing_id, bool)):
+            raise CsMoneyRequestError("CS.MONEY listing has invalid name, ID or price")
+        listing_id = str(listing_id)
+        if listing_id in seen_ids:
+            continue
+        seen_ids.add(listing_id)
+        images = asset.get("images")
+        float_value = asset.get("float")
+        pattern = asset.get("pattern")
+        parsed.append({
+            "listing_id": listing_id, "item_name": name.strip(),
+            "price_cents": price_cents, "item_url": storefront_url(name.strip()),
+            "float_value": float(float_value) if isinstance(float_value, (int, float))
+                and not isinstance(float_value, bool) else None,
+            "paint_seed": pattern if isinstance(pattern, int) and not isinstance(pattern, bool) else None,
+            "image_url": images.get("steam") if isinstance(images, dict)
+                and isinstance(images.get("steam"), str) else None,
+            "phase": asset.get("phase") if isinstance(asset.get("phase"), str) else None,
+        })
+    if any(parsed[i]["price_cents"] > parsed[i + 1]["price_cents"] for i in range(len(parsed) - 1)):
+        raise CsMoneyRequestError("CS.MONEY storefront is not sorted by price")
+    return {"source_url": url, "page_items": len(items),
+            "is_partial": len(items) >= PAGE_SIZE or len(parsed) > limit,
+            "listings": parsed[:limit]}
 
 
 def _embedded_items(page: Any) -> list[dict[str, Any]]:
@@ -65,6 +121,12 @@ def _embedded_items(page: Any) -> list[dict[str, Any]]:
             if any(not isinstance(item, dict) for item in items):
                 raise CsMoneyRequestError("CS.MONEY inventory contains invalid items")
             return items
+    try:
+        body = page.content().casefold()
+    except Exception:
+        body = ""
+    if any(marker in body for marker in ("cloudflare", "just a moment", "cf-challenge")):
+        raise CsMoneyBlockedError("CS.MONEY Cloudflare challenge")
     raise CsMoneyRequestError("CS.MONEY page has no embedded inventory")
 
 
@@ -125,6 +187,8 @@ def extract_capture(
         listings.append(
             {
                 "listing_id": listing_id,
+                "market_hash_name": names["full"],
+                "phase": asset.get("phase"),
                 "price_cents": price_cents,
                 "float_value": float(float_value) if float_value is not None else None,
                 "paint_seed": pattern,
@@ -133,6 +197,8 @@ def extract_capture(
             }
         )
     return {
+        "market_hash_name": market_hash_name,
+        "phase": phase,
         "source_url": source_url or storefront_url(market_hash_name),
         "page_items": len(items),
         "exact_matches": exact_matches,
@@ -148,9 +214,10 @@ def _usd_cents(value: Any) -> int | None:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         return None
-    if not amount.is_finite() or amount < 0:
+    if not amount.is_finite() or amount <= 0 or amount > Decimal(MAX_PRICE_CENTS) / 100:
         return None
-    return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    cents = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return cents if 0 < cents <= MAX_PRICE_CENTS else None
 
 
 def _phase_slug(value: Any) -> str | None:
@@ -166,7 +233,7 @@ def _same_market_name(
         return False
     actual_phase = _phase_slug(asset_phase)
     if full == market_hash_name:
-        return expected_phase is None or actual_phase is None or expected_phase == actual_phase
+        return expected_phase is None or expected_phase == actual_phase
     if expected_phase is None or expected_phase != actual_phase:
         return False
     # Doppler and Gamma Doppler listings sometimes insert the phase just

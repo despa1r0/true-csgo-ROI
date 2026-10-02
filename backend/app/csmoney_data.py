@@ -9,12 +9,14 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from .database import get_connection
+from .marketplaces.csmoney import MAX_PRICE_CENTS, _phase_slug, _same_market_name
 
 
 MARKETPLACE = "CS.MONEY"
 MARKETPLACE_ID = "csmoney"
 DEFAULT_TTL_SECONDS = 1800
 MAX_LISTINGS_PER_VARIANT = 10
+MAX_MARKET_QUANTITY = 2_147_483_647  # PostgreSQL INTEGER
 WEAR_NAMES = {
     "factory-new": "Factory New",
     "minimal-wear": "Minimal Wear",
@@ -34,12 +36,22 @@ def cache_ttl_seconds() -> int:
 
 def _fresh(state: dict[str, Any] | None, ttl_seconds: int) -> bool:
     fetched_at = state.get("fetched_at") if state else None
-    return bool(fetched_at and fetched_at >= datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds))
+    return bool(fetched_at and datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
+                <= fetched_at <= datetime.now(timezone.utc) + timedelta(minutes=5))
 
 
 def _refresh_allowed(state: dict[str, Any]) -> bool:
     attempted = state.get("last_attempt_at")
     return not state.get("last_error") or not attempted or attempted < datetime.now(timezone.utc) - timedelta(minutes=15)
+
+
+def _variant_source_state(state: dict[str, Any], *, has_listings: bool, ttl: int) -> str:
+    """Describe cached evidence, independently of HTTP success and UI filters."""
+    if not _fresh(state, ttl):
+        return "stale" if state.get("fetched_at") or has_listings else "provider_unavailable"
+    if state.get("quote_source") == "wiki_market_summary":
+        return "summary_only"
+    return "listings_available" if has_listings else "empty"
 
 
 def enqueue_variants(variant_ids: list[str], *, priority: int = 100) -> int:
@@ -130,6 +142,21 @@ def store_variant_capture(variant_id: str, capture: dict[str, Any]) -> int:
     page_items = int(capture["page_items"])
     if len(listings) > MAX_LISTINGS_PER_VARIANT:
         raise ValueError("CS.MONEY capture exceeds the ten-listing limit")
+    if listings:
+        context = load_variant_context(variant_id)
+        if context is None or capture.get("market_hash_name") != context["market_hash_name"]:
+            raise ValueError("CS.MONEY capture variant does not match catalogue")
+        expected_phase = _phase_slug(context.get("phase"))
+        if _phase_slug(capture.get("phase")) != expected_phase:
+            raise ValueError("CS.MONEY capture phase does not match catalogue")
+        for listing in listings:
+            if (not _same_market_name(listing.get("market_hash_name"),
+                                      context["market_hash_name"], listing.get("phase"),
+                                      expected_phase)
+                    or not isinstance(listing.get("price_cents"), int)
+                    or isinstance(listing["price_cents"], bool)
+                    or not 0 < listing["price_cents"] <= MAX_PRICE_CENTS):
+                raise ValueError("CS.MONEY listing does not match catalogue or has invalid price")
     with get_connection() as connection:
         if partial and not listings:
             connection.execute(
@@ -241,7 +268,10 @@ def store_wiki_market_summary(variant_id: str, summary: dict[str, int], *, item_
     """Store a current Market minimum without fabricating individual listings."""
     price_cents = summary["price_cents"]
     quantity = summary["quantity"]
-    if not isinstance(price_cents, int) or price_cents <= 0 or not isinstance(quantity, int) or quantity < 1:
+    if (isinstance(price_cents, bool) or not isinstance(price_cents, int)
+            or not 0 < price_cents <= MAX_PRICE_CENTS
+            or isinstance(quantity, bool) or not isinstance(quantity, int)
+            or not 1 <= quantity <= MAX_MARKET_QUANTITY):
         raise ValueError("Invalid CS.MONEY Wiki Market summary")
     with get_connection() as connection:
         connection.execute(
@@ -412,6 +442,36 @@ def get_csmoney_skin_listings(
                 """, (MARKETPLACE, selected_ids)
             ).fetchall())
     selected_by_id = {row["id"]: row for row in selected}
+    # Fresh offers must not be displaced by stale low prices at the display limit.
+    rows.sort(key=lambda row: (not (_fresh(selected_by_id[row["variant_id"]], ttl)
+                                   and _fresh(row, ttl)), row["price_cents"], row["listing_id"]))
+    # Source availability is evaluated before price/attachment filters and limit.
+    fresh_listing_ids = {
+        row["variant_id"] for row in rows if _fresh(row, ttl)
+    }
+    listing_ids = {row["variant_id"] for row in rows}
+    variant_states = []
+    for context in selected:
+        source_state = _variant_source_state(
+            context, has_listings=context["id"] in listing_ids, ttl=ttl,
+        )
+        if source_state == "listings_available" and context["id"] not in fresh_listing_ids:
+            source_state = "stale"
+        status = (
+            "unavailable" if source_state == "provider_unavailable" else
+            "stale" if source_state == "stale" else
+            "partial" if context["is_partial"] is not False or context["last_error"] else "ok"
+        )
+        variant_states.append({
+            "variant_id": context["id"],
+            "source_state": source_state,
+            "status": status,
+            "quote_source": context["quote_source"],
+            "fetched_at": context["fetched_at"],
+            "stale": source_state in {"stale", "provider_unavailable"},
+            "is_partial": context["is_partial"] is not False,
+            "error": context["last_error"],
+        })
     listings = []
     for row in rows:
         context = selected_by_id[row["variant_id"]]
@@ -444,25 +504,45 @@ def get_csmoney_skin_listings(
             "stickers": row["stickers"],
             "charms": row["charms"],
             "fetched_at": row["fetched_at"],
+            "stale": not _fresh(context, ttl) or not _fresh(row, ttl),
             "item_name": skin["name"],
         })
         if len(listings) >= limit:
             break
     fetched_dates = [row["fetched_at"] for row in selected if row["fetched_at"]]
-    wiki_summary_only = not listings and any(
-        row["quote_source"] == "wiki_market_summary" and _fresh(row, ttl)
-        for row in selected
+    quote_sources = {
+        row["quote_source"] for row in selected
+        if row["quote_source"] and row["fetched_at"]
+        and ((row["quote_source"] == "wiki_market_summary" and row["summary_price_cents"])
+             or (row["quote_source"] == "storefront" and row["id"] in listing_ids))
+    }
+    quote_source = (next(iter(quote_sources)) if len(quote_sources) == 1 else
+                    "mixed" if quote_sources else None)
+    source_states = {state["source_state"] for state in variant_states}
+    source_state = next(iter(source_states)) if len(source_states) == 1 else (
+        "partial" if source_states else "empty"
     )
+    statuses = {state["status"] for state in variant_states}
+    status = next(iter(statuses)) if len(statuses) == 1 else "partial"
+    if len(source_states) > 1:
+        status = "partial"
+    usable = any(state["source_state"] in {"listings_available", "summary_only", "empty"}
+                 for state in variant_states)
     return {
         "marketplace": MARKETPLACE,
         "sort_by": "lowest_price",
         "requested_sort_by": sort_by,
         "listings": listings,
-        "error": next((row["last_error"] for row in selected if row["last_error"]), None),
+        # A failed sibling must not hide usable data; errors remain per variant.
+        "error": None if usable and len(selected) > 1 else next(
+            (row["last_error"] for row in selected if row["last_error"]), None),
+        "status": status if variant_states else "ok",
+        "source_state": source_state,
+        "variant_states": variant_states,
         "fetched_at": min(fetched_dates) if fetched_dates else None,
-        "is_stale": bool(stale_ids),
-        "is_partial": any(row["is_partial"] is not False for row in selected),
-        "quote_source": "wiki_market_summary" if wiki_summary_only else "storefront",
+        "is_stale": bool(stale_ids) or any(state["source_state"] == "stale" for state in variant_states),
+        "is_partial": status == "partial" or any(row["is_partial"] is not False for row in selected),
+        "quote_source": quote_source,
         "refresh_queued": bool(queue_ids),
     }
 
@@ -502,7 +582,10 @@ def get_csmoney_variant_details(variant_id: str) -> dict[str, Any] | None:
         "cached": True,
         "stale": result["is_stale"],
         "is_partial": result["is_partial"],
-        "quote_source": "wiki_market_summary" if wiki_summary else "storefront",
+        "quote_source": result["quote_source"],
+        "source_state": result["source_state"],
+        "status": result["status"],
+        "variant_states": result["variant_states"],
         "refresh_queued": result["refresh_queued"],
         "listings_error": result["error"],
         "sales_error": "CS.MONEY does not provide sales history",

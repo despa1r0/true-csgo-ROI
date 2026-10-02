@@ -8,7 +8,10 @@ import { formatUsd } from "@/shared/lib/format";
 import { ProfitSettings, type ProfitSettingsValue } from "./ProfitSettings";
 import { ListingDialog } from "./ListingDialog";
 import { FlipRiskNotice } from "./FlipRiskNotice";
+import { CsMoneyTextSearch } from "./CsMoneyTextSearch";
+import { shouldOfferCsMoneySearch } from "./shouldOfferCsMoneySearch";
 import { selectQualityCardMarketData } from "./qualityCard";
+import { QuoteProvenance, opportunityQuoteSources } from "./quoteSource";
 import styles from "./market.module.css";
 
 const wearCodes: Record<string, string> = { "Factory New": "FN", "Minimal Wear": "MW", "Field-Tested": "FT", "Well-Worn": "WW", "Battle-Scarred": "BS" };
@@ -48,6 +51,9 @@ export function CatalogPage() {
     enabled: searchEnabled,
     staleTime: 300_000,
   });
+  const showCsMoneySearch = shouldOfferCsMoneySearch({ query, searchedQuery: debouncedQuery,
+    hasFilters: Object.values(filters).some(Boolean), searchComplete: searchQuery.isSuccess,
+    matches: searchQuery.data?.length ?? 0, selected: Boolean(selectedResult) });
   const skinQuery = useQuery({
     queryKey: ["skin", selectedResult?.id],
     queryFn: ({ signal }) => api.skinDetails(selectedResult!.id, signal),
@@ -108,6 +114,8 @@ export function CatalogPage() {
         <p className={styles.searchHint}>{searchEnabled && searchQuery.data ? t("catalog.results", { count: searchQuery.data.length }) : t("catalog.searchHint")}</p>
       </section>
 
+      {showCsMoneySearch && <CsMoneyTextSearch key={debouncedQuery} query={debouncedQuery} />}
+
       <ProfitSettings value={profit} marketplaces={marketplaces} onChange={setProfit} />
 
       {skinQuery.data && (
@@ -127,8 +135,10 @@ export function CatalogPage() {
                 <div className={styles.qualityTop}><strong>{wearCodes[quality.wear] ?? "1"}</strong><span>{wearLabel}</span></div>
                 <img src={quality.variants[0]?.image_url ?? skinQuery.data.image_url ?? ""} alt="" width="320" height="200" loading="lazy" />
                 <div className={styles.qualityPrice}><strong>{cheapest ? t("catalog.marketFrom", { price: formatUsd(cheapest.quote.price_cents, locale) }) : t("catalog.noPrice")}</strong><span>{cheapest ? marketplaces.find((item) => item.id === cheapest.marketplaceId)?.display_name ?? cheapest.marketplaceId : "—"}</span></div>
+                {cheapest?.quote.source === "wiki_market_summary" && <span className={styles.sourceNote}>{t("marketSource.summaryNote")}</span>}
                 <div className={styles.marketMini}>{marketplaces.filter((market) => market.capabilities.supports_listings).map((market) => { const marketQuote = quotes.find((item) => item.marketplaceId === market.id && item.variant.variant_id === cheapest?.variant.variant_id)?.quote; return <span key={market.id}><small>{market.display_name}</small><b>{formatUsd(marketQuote?.price_cents, locale)}</b></span>; })}</div>
                 {best && <div className={best.profit_cents >= 0 ? styles.positive : styles.negative}>{best.buy_marketplace} → {best.sell_marketplace} · {best.profit_cents > 0 ? "+" : ""}{formatUsd(best.profit_cents, locale)} · {best.cash_roi_percent}%</div>}
+                {best && <QuoteProvenance {...opportunityQuoteSources(best, variants.find((item) => item.variant_id === best.variant_id) ?? cheapest?.variant)} />}
                 {best && <FlipRiskNotice level={best.risk_level} score={best.sell_liquidity?.score} cashRoiPercent={best.cash_roi_percent} compact />}
               </button>;
             })}

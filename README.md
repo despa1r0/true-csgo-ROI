@@ -131,6 +131,12 @@ docker compose down -v
 
 Подробное описание frontend-архитектуры и ограничений: [`docs/FRONTEND.md`](docs/FRONTEND.md).
 
+Аудит CS.MONEY с приоритетами исправлений: [`docs/CSMONEY_REVIEW.md`](docs/CSMONEY_REVIEW.md).
+
+Отдельный запуск CS.MONEY-воркера с существующим Surfshark VPN:
+`docker compose -f docker-compose.csmoney-test.yml up --build -d`.
+Настройка и проверка описаны в [`docs/CSMONEY.md`](docs/CSMONEY.md#локальный-запуск).
+
 ## Как сейчас устроен проект
 
 ```text

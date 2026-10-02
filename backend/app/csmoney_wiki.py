@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from http.client import HTTPException
 import json
 import re
 from typing import Any
@@ -15,7 +16,7 @@ from urllib.request import Request, urlopen
 
 from psycopg.types.json import Jsonb
 
-from .csmoney_data import load_variant_context
+from .csmoney_data import MAX_MARKET_QUANTITY, load_variant_context
 from .database import get_connection
 
 
@@ -31,6 +32,10 @@ MAX_RESPONSE_BYTES = 2_000_000
 class WikiPriceError(ValueError):
     """Wiki data cannot be safely attributed to the requested variant."""
 
+    def __init__(self, message: str, *, result: str = "malformed") -> None:
+        super().__init__(message)
+        self.result = result
+
 
 def _query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
@@ -38,10 +43,13 @@ def _query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
         GRAPHQL_URL, data=body,
         headers={"Content-Type": "application/json", "User-Agent": "trueROI/1.0"},
     )
-    with urlopen(request, timeout=12) as response:
-        if "application/json" not in response.headers.get("Content-Type", ""):
-            raise WikiPriceError("Wiki response is not JSON")
-        payload = response.read(MAX_RESPONSE_BYTES + 1)
+    try:
+        with urlopen(request, timeout=12) as response:
+            if "application/json" not in response.headers.get("Content-Type", ""):
+                raise WikiPriceError("Wiki response is not JSON")
+            payload = response.read(MAX_RESPONSE_BYTES + 1)
+    except HTTPException as error:
+        raise WikiPriceError("Wiki response was interrupted", result="network_error") from error
     if len(payload) > MAX_RESPONSE_BYTES:
         raise WikiPriceError("Wiki response is too large")
     result = json.loads(payload)
@@ -65,7 +73,8 @@ def _usd_cents(value: Any) -> int | None:
     if not amount.is_finite() or amount <= 0 or amount > Decimal("1000000"):
         return None
     try:
-        return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        cents = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        return cents if 0 < cents <= 2_147_483_647 else None
     except InvalidOperation:
         return None
 
@@ -139,16 +148,22 @@ def fetch_market_summary(item_name: str, market_hash_name: str) -> dict[str, int
     ).get("get_min_available")
     if not isinstance(rows, list):
         raise WikiPriceError("Wiki Market summary is missing")
+    if not rows:
+        raise WikiPriceError("Wiki Market summary is empty", result="empty")
     matches = [row for row in rows if isinstance(row, dict) and row.get("name") == market_hash_name]
     if len(matches) != 1:
-        raise WikiPriceError("Wiki Market variant is unavailable or ambiguous")
+        raise WikiPriceError("Wiki Market variant is unavailable or ambiguous",
+                             result="empty" if not matches else "malformed")
     source = matches[0].get("source")
     market = source.get("market") if isinstance(source, dict) else None
     if not isinstance(market, dict):
-        raise WikiPriceError("Wiki Market quote is unavailable")
+        raise WikiPriceError("Wiki Market quote is unavailable", result="empty")
     price_cents = _usd_cents(market.get("lowestPrice"))
     count = market.get("count")
-    if price_cents is None or isinstance(count, bool) or not isinstance(count, int) or count < 1:
+    if not isinstance(count, bool) and isinstance(count, int) and count == 0:
+        raise WikiPriceError("Wiki Market has no offers", result="empty")
+    if (price_cents is None or isinstance(count, bool) or not isinstance(count, int)
+            or not 1 <= count <= MAX_MARKET_QUANTITY):
         raise WikiPriceError("Wiki Market quote is invalid")
     return {"price_cents": price_cents, "quantity": count}
 

@@ -3,6 +3,7 @@ import type {
   CalculationRequest,
   CatalogueFilters,
   CatalogueSearchResult,
+  CsMoneyTextSearch,
   HealthResponse,
   BuyOrder,
   ListingFilters,
@@ -22,6 +23,10 @@ export const api = {
     apiClient.get<CatalogueFilters>("/api/catalog/filters", { signal }),
   searchSkins: (params: SearchSkinsParams, signal?: AbortSignal) =>
     apiClient.get<CatalogueSearchResult[]>("/api/items/search", { query: { ...params }, signal }),
+  createCsMoneySearch: (query: string) =>
+    apiClient.post<CsMoneyTextSearch>("/api/market/csmoney/search", { query }),
+  csMoneySearchStatus: (requestId: string, signal?: AbortSignal) =>
+    apiClient.get<CsMoneyTextSearch>(`/api/market/csmoney/search/${encodeURIComponent(requestId)}`, { signal }),
   skinDetails: (skinId: string, signal?: AbortSignal) =>
     apiClient.get<SkinDetails>(`/api/skins/${encodeURIComponent(skinId)}`, { signal }),
   marketplaces: (signal?: AbortSignal) =>

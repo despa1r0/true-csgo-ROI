@@ -2,7 +2,6 @@
 
 The `Build and deploy` workflow runs after a successful `CI` push to `main`. It builds two images, stages `docker-compose.prod.yml` on the VPS, then pulls and starts the services. Images use the commit SHA; the `latest` tag is published but not used for deployment.
 
-
 Configure these repository secrets before enabling deployment:
 
 | Secret | Value |
@@ -11,15 +10,28 @@ Configure these repository secrets before enabling deployment:
 | `VPS_PORT` | SSH port |
 | `VPS_USER` | Deployment account |
 | `VPS_SSH_KEY` | Private SSH key for that account |
-| `VPS_KNOWN_HOSTS` | Preverified OpenSSH `known_hosts` entry for the VPS |
 
-Obtain the server host-key fingerprint through an independent trusted channel
-(for example, the VPS provider console or an administrator), compare it with
-the fingerprint reported by `ssh-keygen -lf` for the candidate public host key,
-then place the verified `known_hosts` line in `VPS_KNOWN_HOSTS`. Do not create
-this secret by trusting an unverified `ssh-keyscan` result. The workflow checks
-that the entry matches `VPS_HOST` and `VPS_PORT`, and both `ssh` and `scp` require
-strict host-key checking.
+The workflow retrieves the VPS host key with `ssh-keyscan` using `VPS_HOST` and
+`VPS_PORT`. It stores the key in a temporary `known_hosts` file and requires
+strict host-key checking for both `ssh` and `scp` throughout that deployment.
+Deployment stops if the scan fails or returns no matching key. The temporary
+SSH files are removed even if deployment fails; no host-key secret is required.
+The initial key is trusted from the network on each workflow run, so it is not
+independently verified against a preconfigured fingerprint.
+
+## Script layout
+
+| Script | Runs on | Purpose |
+| --- | --- | --- |
+| `scripts/ci/lint-shell.sh` | CI runner | Bash syntax and ShellCheck for all scripts under `scripts/` |
+| `scripts/ci/validate-compose.sh` | CI runner | Local, production and CS.MONEY test Compose validation with test-only environment values |
+| `scripts/deploy/deploy-ssh.sh` | Deploy runner | SSH configuration, file transfer, remote execution and credential cleanup |
+| `scripts/deploy/deploy-production.sh` | VPS | Image pull, catalogue seed, service restart and health checks |
+
+The SSH helper copies the production script to `/opt/true-roi` under its existing
+filename, `deploy-production.sh`. Run the CI scripts from the repository root.
+
+## Production execution
 
 GitHub Actions serializes workflow runs with the `true-roi-production` concurrency group. On the VPS, `/opt/true-roi/.deploy.lock` is held with `flock` while the staged Compose file is validated and installed, images are pulled, and services are started. The VPS user needs write access to `/opt/true-roi` and `flock` from `util-linux`.
 

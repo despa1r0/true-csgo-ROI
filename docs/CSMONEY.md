@@ -119,17 +119,79 @@ CS.MONEY пока не предоставляются. Ссылка лота в�
 
 ## Локальный запуск
 
-```powershell
-docker compose up --build
+Для проверки воркера через VPN используйте отдельный файл
+[`docker-compose.csmoney-test.yml`](../docker-compose.csmoney-test.yml).
+Он поднимает PostgreSQL, импорт каталога, Gluetun и CS.MONEY-воркер. Образ
+воркера собирается из текущего локального кода через `Dockerfile.csmoney`;
+тот же образ используется для импорта каталога, поэтому сборка frontend не нужна.
+
+Запускайте команды из корня проекта. Нужен Docker Engine или Docker Desktop
+в режиме Linux containers. Если `.env` ещё нет, скопируйте `.env.example` в `.env`.
+Используются существующие настройки Surfshark WireGuard:
+
+```dotenv
+SURFSHARK_WIREGUARD_PRIVATE_KEY=ваш_ключ
+SURFSHARK_WIREGUARD_ADDRESSES=адрес_из_WireGuard_конфига
+SURFSHARK_SERVER_COUNTRIES=Poland
 ```
 
-Для отдельной проверки страницы без записи в БД:
+Первый запуск скачивает браузер Camoufox при сборке образа и импортирует
+каталог в тестовую БД. Воркер стартует после успешного импорта и готовности VPN.
+Его сетевой режим `service:gluetun` направляет запросы через Gluetun, как
+в production. Ключи CSFloat и CSGO Market для этого стенда не обязательны.
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements-csmoney.txt
-.\.venv\Scripts\python.exe -m camoufox fetch
-.\.venv\Scripts\python.exe -m backend.probe_csmoney 'AK-47 | Redline (Field-Tested)'
+docker compose -f docker-compose.csmoney-test.yml up --build -d
+docker compose -f docker-compose.csmoney-test.yml logs -f --tail=100 gluetun catalog-seed csmoney-worker
 ```
 
-На production CI собирает второй образ из `Dockerfile.csmoney`; Compose
-запускает его после импорта каталога. Настройки находятся в `.env.example`.
+В логах Gluetun должно быть успешное подключение, у `catalog-seed` —
+`Catalogue is ready`, а у воркера — количество добавленных задач и результаты
+их обработки. `source=wiki_market_summary result=ok` означает успешную
+Wiki-сводку; это не подтверждение получения storefront-лотов. Ответ 403
+по-прежнему включает паузу storefront, даже при работающем VPN.
+
+Проверка состояния контейнеров:
+
+```powershell
+docker compose -f docker-compose.csmoney-test.yml ps --all
+```
+
+Для одного прохода вместо фоновой работы сначала остановите воркер,
+оставив готовые БД и VPN, затем запустите его с `--once`:
+
+```powershell
+docker compose -f docker-compose.csmoney-test.yml stop csmoney-worker
+docker compose -f docker-compose.csmoney-test.yml run --rm --no-deps csmoney-worker python -m backend.app.csmoney_worker --once
+```
+
+`--once` обрабатывает одну готовую задачу и завершает процесс; результат
+провайдера проверяйте по логам, а не только по коду завершения.
+
+Остановка стенда с сохранением тестовой БД:
+
+```powershell
+docker compose -f docker-compose.csmoney-test.yml down
+```
+
+Стенд использует отдельный Compose project `true-roi-csmoney-test` и volume
+`csmoney_test_postgres`; порты на хост не публикуются. Для удаления именно
+тестовой БД добавьте `--volumes` к команде `down`.
+
+Для запуска всего приложения без этого VPN-стенда остаётся
+`docker compose up --build`. На production GitHub Actions собирает второй
+образ из `Dockerfile.csmoney`; VPS скачивает его из GHCR.
+
+## Python-зависимости
+
+Три requirements-файла разделяют разные окружения:
+
+| Файл | Назначение | Дополнительно к общей базе |
+| --- | --- | --- |
+| `backend/requirements.txt` | API и общие модули | FastAPI, Pydantic, Uvicorn, python-dotenv, Psycopg |
+| `backend/requirements-csmoney.txt` | Браузерный воркер | Camoufox |
+| `backend/requirements-dev.txt` | Тесты | pytest |
+
+Файлы воркера и тестов подключают базовый через `-r requirements.txt`;
+дублирования общего списка нет. Локальный Docker-стенд устанавливает нужные
+зависимости и браузер внутри образа, вручную устанавливать их на хост не нужно.

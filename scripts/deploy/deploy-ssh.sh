@@ -3,7 +3,7 @@ set -euo pipefail
 
 validate() {
     local variable
-    for variable in VPS_SSH_KEY VPS_KNOWN_HOSTS VPS_HOST VPS_USER VPS_PORT; do
+    for variable in VPS_SSH_KEY VPS_HOST VPS_USER VPS_PORT; do
         if [[ -z "${!variable:-}" ]]; then
             echo "Missing required repository secret: ${variable}" >&2
             return 1
@@ -25,21 +25,24 @@ configure() {
     install -d -m 700 "${SSH_DIRECTORY}"
     printf '%s\n' "${VPS_SSH_KEY}" > "${SSH_DIRECTORY}/id_ed25519"
     chmod 600 "${SSH_DIRECTORY}/id_ed25519"
-    printf '%s\n' "${VPS_KNOWN_HOSTS}" > "${SSH_DIRECTORY}/known_hosts"
+    if ! ssh-keyscan -H -T 10 -p "${VPS_PORT}" "${VPS_HOST}" > "${SSH_DIRECTORY}/known_hosts"; then
+        echo 'Failed to retrieve the VPS SSH host key' >&2
+        return 1
+    fi
     chmod 600 "${SSH_DIRECTORY}/known_hosts"
     local known_host="${VPS_HOST}"
     if [[ "${VPS_PORT}" != 22 ]]; then
         known_host="[${VPS_HOST}]:${VPS_PORT}"
     fi
     if ! ssh-keygen -F "${known_host}" -f "${SSH_DIRECTORY}/known_hosts" >/dev/null; then
-        echo 'VPS_KNOWN_HOSTS has no host key for VPS_HOST and VPS_PORT' >&2
+        echo 'No SSH host key found for VPS_HOST and VPS_PORT' >&2
         return 1
     fi
 }
 
 copy_files() {
     local file
-    for file in docker-compose.prod.yml scripts/deploy-production.sh; do
+    for file in docker-compose.prod.yml scripts/deploy/deploy-production.sh; do
         scp -i "${SSH_DIRECTORY}/id_ed25519" \
             -o UserKnownHostsFile="${SSH_DIRECTORY}/known_hosts" \
             -o StrictHostKeyChecking=yes \

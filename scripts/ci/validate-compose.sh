@@ -11,4 +11,7 @@ export CATALOG_EXTRA_SOURCE_BASE_URL=https://example.invalid
 export SURFSHARK_WIREGUARD_PRIVATE_KEY=ci-only-placeholder
 export SURFSHARK_WIREGUARD_ADDRESSES=10.0.0.2/32
 
-docker compose --env-file /dev/null -f docker-compose.prod.yml config --quiet
+for compose_file in docker-compose.yml docker-compose.prod.yml docker-compose.csmoney-test.yml; do
+    echo "Validating ${compose_file}"
+    docker compose --env-file /dev/null -f "${compose_file}" config --quiet
+done

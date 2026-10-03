@@ -11,6 +11,7 @@
 .page { gap: 1.5rem; }
 .hero { position: relative; min-height: 13rem; display: grid; align-content: center; overflow: hidden; padding: clamp(2rem, 5vw, 4.5rem); border: 1px solid var(--color-border-subtle); border-radius: 2rem; background: linear-gradient(120deg, var(--color-surface-solid), color-mix(in srgb, var(--color-accent-muted) 70%, var(--color-surface-solid))); box-shadow: var(--shadow-card); }
 .hero::after { position: absolute; top: -8rem; right: -3rem; width: 22rem; height: 22rem; border: 1px solid color-mix(in srgb, var(--color-accent-primary) 18%, transparent); border-radius: 38% 62% 42% 58%; content: ""; transform: rotate(-15deg); }
+.hero::after { pointer-events: none; }
 .hero > span,
 .resultPanel header > span { color: var(--color-accent-primary); font-family: var(--font-family-mono); font-size: .68rem; letter-spacing: .14em; }
 .hero h1 { margin: .6rem 0; font-family: var(--font-family-display); font-size: clamp(2.6rem, 6vw, 5.1rem); font-weight: 850; line-height: .96; letter-spacing: -.068em; text-wrap: balance; }
@@ -18,7 +19,8 @@
 .skinReference,
 .formPanel,
 .resultPanel { border-color: var(--color-border-subtle); border-radius: 1.25rem; background: var(--color-surface); box-shadow: var(--shadow-card); backdrop-filter: blur(12px); }
-.skinReference { padding: 1.15rem; }
+.skinReference { position: relative; z-index: 1; padding: 1.15rem; }
+.skinReference:focus-within { z-index: 2; }
 .searchWrap > label,
 .priceGrid label > span,
 .marketGrid label > span,
@@ -29,7 +31,9 @@
 .optionsGrid select,
 .selectedSkin select { border-color: var(--color-border-strong); border-radius: .72rem; background: var(--color-surface-solid); color: var(--color-text-primary); }
 .searchWrap > input { height: 3.25rem; }
-.suggestions { top: calc(100% + .45rem); border-color: var(--color-border-strong); border-radius: .85rem; background: var(--color-surface-solid); box-shadow: var(--shadow-raised); }
+.suggestions { top: calc(100% + .45rem); max-height: min(22rem, 50vh); margin: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; border-color: var(--color-border-strong); border-radius: .85rem; background: var(--color-surface-solid); box-shadow: var(--shadow-raised); }
+.suggestions > li[role="status"] { padding: .75rem; color: var(--color-text-muted); }
+.suggestions button:focus-visible { outline: 2px solid var(--color-accent-primary); outline-offset: -2px; background: var(--color-surface-hover); }
 .suggestions button { cursor: pointer; }
 .suggestions button:hover { background: var(--color-surface-hover); }
 .selectedSkin img { filter: drop-shadow(0 .65rem .9rem rgb(12 50 41 / 14%)); }

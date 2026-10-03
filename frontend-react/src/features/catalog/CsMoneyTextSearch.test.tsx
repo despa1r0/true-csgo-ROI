@@ -28,7 +28,8 @@ describe("CS.MONEY text search UI", () => {
     expect(empty).toContain("No listings found");
     expect(empty).not.toContain("href=");
     const failure = renderToStaticMarkup(<CsMoneySearchResult current={{ request_id: "1", status: "error", error: "Failed to read page" }} />);
-    expect(failure).toContain("Failed to read page");
+    expect(failure).toContain("Search failed");
+    expect(failure).not.toContain("Failed to read page");
   });
 
   it("renders actual listing name, price and marketplace link", () => {

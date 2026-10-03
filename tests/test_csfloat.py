@@ -7,8 +7,8 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from backend.app.marketplaces import csfloat
-from backend.app import market_data
-from backend.app.market_data import calculate_liquidity
+from backend.app.services import market_data
+from backend.app.analytics.liquidity import calculate_liquidity
 
 
 class FakeResponse:

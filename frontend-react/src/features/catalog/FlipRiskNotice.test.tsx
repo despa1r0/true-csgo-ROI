@@ -6,17 +6,23 @@ import { FlipRiskNotice } from "./FlipRiskNotice";
 
 afterEach(async () => { await i18n.changeLanguage("en"); });
 
-it.each(["en", "ru"])("explains missing CS.MONEY liquidity signals in %s", async (language) => {
+it.each(["en", "ru"])("keeps unrated liquidity neutral and concise in %s", async (language) => {
   await i18n.changeLanguage(language);
-  const html = renderToStaticMarkup(<FlipRiskNotice level="unknown" sellMarketplace="csmoney" />);
-  expect(html).toContain(i18n.t("flipRisk.csMoneyUnavailableBody"));
+  const html = renderToStaticMarkup(<FlipRiskNotice level="unknown" score={90} compact />);
+  expect(html).toContain(i18n.t("flipRisk.unknownTitle"));
+  expect(html).not.toContain("90");
+  expect(html).not.toMatch(/riskHigh|riskCritical|riskCaution/);
   expect(html).not.toContain(i18n.t("flipRisk.unknownBody"));
-  const other = renderToStaticMarkup(<FlipRiskNotice level="unknown" sellMarketplace="csfloat" />);
-  expect(other).toContain(i18n.t("flipRisk.unknownBody"));
+  expect(html).toMatch(/^<span/);
 });
 
-it.each(["missing_ask", "missing_orders", "missing_sales"])("names the missing liquidity input: %s", (dataStatus) => {
-  const html = renderToStaticMarkup(<FlipRiskNotice level="unknown" sellMarketplace="csfloat" dataStatus={dataStatus} />);
-  expect(html).toContain(i18n.t(`flipRisk.${dataStatus}`));
-  expect(html).not.toContain(i18n.t("flipRisk.unknownBody"));
+it.each(["high", "critical"] as const)("preserves a measured %s liquidity warning", (level) => {
+  const html = renderToStaticMarkup(<FlipRiskNotice level={level} score={30} />);
+  expect(html).toContain(i18n.t(`flipRisk.${level}Title`));
+  expect(html).toContain("30/100");
+  expect(html).not.toContain(i18n.t(`flipRisk.${level}Body`));
+});
+
+it("does not show a warning when the risk calculation is absent", () => {
+  expect(renderToStaticMarkup(<FlipRiskNotice level={null} />)).toBe("");
 });

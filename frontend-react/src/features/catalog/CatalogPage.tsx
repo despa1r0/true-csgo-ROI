@@ -12,7 +12,6 @@ import { CsMoneyTextSearch } from "./CsMoneyTextSearch";
 import { shouldOfferCsMoneySearch } from "./shouldOfferCsMoneySearch";
 import { csMoneyRefreshInterval, mergeCsMoneyPrices } from "./csMoneyComparison";
 import { selectQualityCardMarketData } from "./qualityCard";
-import { QuoteProvenance, opportunityQuoteSources } from "./quoteSource";
 import styles from "./market.module.css";
 
 const wearCodes: Record<string, string> = { "Factory New": "FN", "Minimal Wear": "MW", "Field-Tested": "FT", "Well-Worn": "WW", "Battle-Scarred": "BS" };
@@ -159,11 +158,10 @@ export function CatalogPage() {
                 <div className={styles.qualityTop}><strong>{wearCodes[quality.wear] ?? "1"}</strong><span>{wearLabel}</span></div>
                 <img src={quality.variants[0]?.image_url ?? skinQuery.data.image_url ?? ""} alt="" width="320" height="200" loading="lazy" />
                 <div className={styles.qualityPrice}><strong>{cheapest ? t("catalog.marketFrom", { price: formatUsd(cheapest.quote.price_cents, locale) }) : t("catalog.noPrice")}</strong><span>{cheapest ? marketplaces.find((item) => item.id === cheapest.marketplaceId)?.display_name ?? cheapest.marketplaceId : "—"}</span></div>
-                {cheapest?.quote.source === "wiki_market_summary" && <span className={styles.sourceNote}>{t("marketSource.summaryNote")}</span>}
+                {cheapest?.quote.source === "wiki_market_summary" && <span className={styles.quoteLabel}>{t("marketSource.summaryOnly")}</span>}
                 <div className={styles.marketMini}>{marketplaces.filter((market) => market.capabilities.supports_listings).map((market) => { const marketQuote = quotes.find((item) => item.marketplaceId === market.id && item.variant.variant_id === cheapest?.variant.variant_id)?.quote; return <span key={market.id}><small>{market.display_name}</small><b>{formatUsd(marketQuote?.price_cents, locale)}</b></span>; })}</div>
                 {best && <div className={best.profit_cents >= 0 ? styles.positive : styles.negative}>{best.buy_marketplace} → {best.sell_marketplace} · {best.profit_cents > 0 ? "+" : ""}{formatUsd(best.profit_cents, locale)} · {best.cash_roi_percent}%</div>}
-                {best && <QuoteProvenance {...opportunityQuoteSources(best, variants.find((item) => item.variant_id === best.variant_id) ?? cheapest?.variant)} />}
-                {best && <FlipRiskNotice level={best.risk_level} score={best.sell_liquidity?.score} cashRoiPercent={best.cash_roi_percent} sellMarketplace={best.sell_marketplace} dataStatus={best.sell_liquidity?.data_status} compact />}
+                {best && <FlipRiskNotice level={best.risk_level} score={best.sell_liquidity?.score} compact />}
               </button>;
             })}
             {skinQuery.data.qualities.length === 0 && <p className={styles.emptyState}>{t("catalog.marketDataUnavailable")}</p>}

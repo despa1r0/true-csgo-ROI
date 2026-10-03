@@ -50,8 +50,6 @@ export function opportunityQuoteSources(opportunity: ProfitOpportunity, comparis
 
 export function QuoteProvenance({ buy, sell }: { buy: QuoteSource | null; sell: QuoteSource | null }) {
   const { t } = useTranslation();
-  return <span className={styles.sourceNote}>
-    {t("marketSource.quoteProvenance", { buy: t("marketSource.quoteTypes." + (buy ?? "unavailable")), sell: t("marketSource.quoteTypes." + (sell ?? "unavailable")) })}
-    {(buy === "wiki_market_summary" || sell === "wiki_market_summary") && <> {t("marketSource.summaryNote")}</>}
-  </span>;
+  if (buy !== "wiki_market_summary" && sell !== "wiki_market_summary") return null;
+  return <span className={styles.quoteLabel}>{t("marketSource.referenceQuote")}</span>;
 }

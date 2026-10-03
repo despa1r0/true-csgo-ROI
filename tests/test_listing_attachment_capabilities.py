@@ -7,7 +7,8 @@ These tests intentionally document that boundary as well as the different
 implementation offered by each marketplace.
 """
 
-from backend.app import csgomarket_data, market_data
+from backend.app import csgomarket_data
+from backend.app.services import market_data
 from backend.app.main import app
 from backend.app.marketplaces import whitemarket
 

@@ -27,8 +27,8 @@ export function CsMoneyTextSearch({ query }: { query: string }) {
     setSubmitError(null);
     try {
       setRequest(await api.createCsMoneySearch(query));
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : t("csmoneySearch.error"));
+    } catch {
+      setSubmitError(t("csmoneySearch.error"));
     } finally {
       submitting.current = false;
     }
@@ -49,8 +49,8 @@ export function CsMoneySearchResult({ current, submitError = null, statusError =
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage === "ru" ? "ru-RU" : "en-US";
   return <>
-    {current?.status && <p role="status" className={styles.textSearchStatus}>{t(`csmoneySearch.${current.status}`)}{current.error ? `: ${current.error}` : ""}</p>}
-    {(submitError || statusError) && <p role="alert" className={styles.textSearchError}>{submitError ?? t("csmoneySearch.error")}</p>}
+    {current?.status && <p role="status" className={styles.textSearchStatus}>{t(`csmoneySearch.${current.status}`)}</p>}
+    {(submitError || statusError) && <p role="alert" className={styles.textSearchError}>{t("csmoneySearch.error")}</p>}
     {current?.result?.is_partial && <p className={styles.textSearchStatus}>{t("csmoneySearch.firstPage")}</p>}
     {current?.result?.listings && <div className={styles.textSearchListings}>
       {current.result.listings.map((listing) => <a key={listing.listing_id} href={listing.item_url} target="_blank" rel="noopener noreferrer" className={styles.textSearchListing}>

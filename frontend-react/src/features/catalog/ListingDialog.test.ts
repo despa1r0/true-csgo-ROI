@@ -94,7 +94,7 @@ describe("CS.MONEY source status", () => {
     ["partial", "marketSource.partial"],
   ];
   function render(snapshot: Partial<ListingsResponse>, fallback = false) {
-    return renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(SourceStateStatus, { snapshot, locale: "en-US", fallback })));
+    return renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(SourceStateStatus, { snapshot, fallback })));
   }
 
   it.each(cases)("maps %s independently of HTTP success and legacy cache flags", (state, key) => {
@@ -122,15 +122,16 @@ describe("CS.MONEY source status", () => {
     expect(render({ fetched_at }, true)).not.toContain("Current data");
   });
 
-  it("keeps healthy and failed variant states visible in a partial response", () => {
+  it("keeps partial-data status concise without exposing technical variant diagnostics", () => {
     const variant_states: ListingsResponse["variant_states"] = cases.slice(0, 5).map(([source_state], index) => ({
       variant_id: `variant-${index}`, source_state, status: source_state === "provider_unavailable" ? "unavailable" : "ok", stale: false, is_partial: false,
     }));
     const html = render({ source_state: "partial", variant_states });
-    variant_states.forEach((state) => {
-      expect(html).toContain(state.variant_id);
-      expect(html).toContain(i18n.t(sourceStatusKey(state)));
-    });
+    expect(html).toContain(i18n.t("marketSource.partial"));
+    variant_states.forEach((state) => expect(html).not.toContain(state.variant_id));
+    const timestamp = "2026-09-30T00:00:00Z";
+    expect(render({ source_state: "listings_available", fetched_at: timestamp })).not.toContain("Updated");
+    expect(render({ source_state: "listings_available", fetched_at: timestamp })).not.toContain("2026");
   });
 
   it("never counts the Wiki Market aggregate as concrete listings", () => {
@@ -140,8 +141,8 @@ describe("CS.MONEY source status", () => {
     expect(activeListingCount(details)).toBe(900);
     expect(activeListingCount(undefined)).toBeUndefined();
     const html = render({ source_state: "summary_only" });
-    expect(html).toContain("not executable or filtered listings");
-    expect(html).toContain("individual listing IDs");
+    expect(html).toContain(i18n.t("marketSource.summaryOnly"));
+    expect(html).not.toContain("individual listing IDs");
   });
 
   it("uses the selected variant freshness rather than a degraded group flag", () => {
@@ -206,9 +207,9 @@ describe("quote provenance and component freshness", () => {
     const i18n = createInstance();
     await i18n.init({ lng: "en", resources: { en: { translation: en } }, interpolation: { escapeValue: false } });
     const html = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(QuoteProvenance, { buy: "wiki_market_summary", sell: "best_bid" })));
-    expect(html).toContain("Wiki Market aggregate reference");
-    expect(html).toContain("buy order");
-    expect(html).toContain("not executable or filtered listings");
+    expect(html).toContain(en.marketSource.referenceQuote);
+    expect(html).not.toContain("buy order");
+    expect(renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(QuoteProvenance, { buy: "listing", sell: "best_bid" })))).toBe("");
   });
 
   it("keeps a fresh bid and ask usable when sales failed", () => {

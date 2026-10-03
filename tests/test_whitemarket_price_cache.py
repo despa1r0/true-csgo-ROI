@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from backend.app import market_data
+from backend.app.services import market_data
 from backend.app.marketplaces.whitemarket import WhitemarketRequestError
 
 

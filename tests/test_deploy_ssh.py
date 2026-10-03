@@ -3,6 +3,9 @@ from pathlib import Path
 import shutil
 import subprocess
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("bash_environment")
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts/deploy/deploy-ssh.sh"

@@ -22,7 +22,7 @@
     "highBody": "Check demand and the quick-sale price before buying.",
     "cautionTitle": "Moderate liquidity.",
     "cautionBody": "Selling at the listed price may take time.",
-    "unknownTitle": "Sale risk is unknown.",
+    "unknownTitle": "Liquidity not rated",
     "unknownBody": "A liquidity estimate needs a current ask, confirmed sales over the last 7 days and buy orders from the selling marketplace. A weekly chart alone does not confirm that executable bids are available. Check their freshness in analytics for the selected variant.",
     "missing_ask": "The selling marketplace has no current ask for this variant. A weekly sales chart does not replace a current sale price.",
     "missing_orders": "The selling marketplace has no usable buy orders for this variant. Weekly sales history alone cannot estimate the price and depth of an immediate sale.",
@@ -45,6 +45,7 @@
     "snapshotUpdated": "Checked {{date}}", "snapshotStale": "Cached prices may be outdated", "snapshotPartial": "Partial sample: lowest price may be missing", "snapshotQueued": "Refreshing in the background"
   },
   "marketSource": {
+    "referenceQuote": "Reference price · not a listing",
     "quoteProvenance": "Buy source: {{buy}} · sell source: {{sell}}. Verify current availability before trading.", "quoteTypes": { "unavailable": "unavailable quote", "wiki_market_summary": "Wiki Market aggregate reference", "storefront": "cached CS.MONEY storefront listing", "listing": "concrete listing", "index": "market price index", "best_bid": "buy order" },
     "listingsAvailable": "Fresh cached listings", "summaryOnly": "Wiki Market summary only", "providerUnavailable": "Provider unavailable", "stale": "Outdated data", "empty": "No matching listings", "partial": "Partially available data",
     "listings_availableNote": "These are fresh cached listings, not a live availability guarantee. Check the listing on the marketplace before trading.",

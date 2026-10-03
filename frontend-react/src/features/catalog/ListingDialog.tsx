@@ -197,8 +197,8 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                 const paintIndexUnavailable = isPaintIndexUnavailable(query?.data?.error);
                 return <section className={styles.marketplaceListingGroup} key={marketplace.id} aria-labelledby={`market-listings-${marketplace.id}`}>
                   <header><div><span className={styles.marketplaceChip}>{marketplace.display_name}</span><h3 id={`market-listings-${marketplace.id}`}>{t("listings.marketHeading", { market: marketplace.display_name })}</h3></div><strong>{t("listings.count", { count: query?.data?.listings.length ?? 0 })}</strong></header>
-                  {query?.data && <ListingSnapshotStatus snapshot={query.data} locale={locale} />}
-                  {!query?.data?.source_state && query?.data?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{t("marketSource.summaryNote")}</p>}
+                  {query?.data && <ListingSnapshotStatus snapshot={query.data} />}
+                  {!query?.data?.source_state && query?.data?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{t("marketSource.referenceQuote")}</p>}
                   {unsupportedFilters.length > 0 && <MarketplaceListingState title={t("listings.filterUnsupportedTitle")} detail={t("listings.filterUnsupportedMarket", { market: marketplace.display_name, filters: unsupportedFilters.map((filter) => t(`listings.${filter}`)).join(", ") })} />}
                   {query?.isLoading && <MarketplaceListingState title={t("common.loading")} />}
                   {query?.isError && <MarketplaceListingState title={t("listings.providerError", { market: marketplace.display_name })} detail={t("listings.providerErrorHint")} onRetry={() => void query.refetch()} />}
@@ -226,9 +226,9 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
               </aside>
               <main className={styles.analyticsPane}>
                 <header className={styles.analyticsHeader}><div><span>{t("analytics.title")}</span><h2>{selectedListing?.market_hash_name ?? selectedVariant?.market_hash_name}</h2></div><div className={styles.marketTabs}>{analyticsMarkets.map((item) => <button className={analyticsMarket === item.id ? styles.activeChip : ""} type="button" key={item.id} onClick={() => setAnalyticsMarket(item.id)}>{item.display_name}</button>)}</div></header>
-                {selectedDetails && <ListingSnapshotStatus snapshot={selectedDetails} locale={locale} />}
-                {selectedDetails && <DetailComponentStatus details={selectedDetails} component={detailComponentForTab(tab)} locale={locale} />}
-                {!selectedDetails?.source_state && selectedDetails?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{t("marketSource.summaryNote")}</p>}
+                {selectedDetails && <ListingSnapshotStatus snapshot={selectedDetails} />}
+                {selectedDetails && <DetailComponentStatus details={selectedDetails} component={detailComponentForTab(tab)} />}
+                {!selectedDetails?.source_state && selectedDetails?.quote_source === "wiki_market_summary" && <p className={styles.sourceNote}>{t("marketSource.referenceQuote")}</p>}
                 <nav
                   className={styles.analyticsTabs}
                   role="tablist"
@@ -259,7 +259,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                   <div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(freshListings?.overview?.price_cents, locale)} /><Metric label={t("analytics.bestBid")} value={formatUsd(selectedQuickSell?.best_price_cents, locale)} /><Metric label={t("analytics.liquidity")} value={selectedDetails && liquidityScoreIfFresh(selectedDetails) != null ? String(liquidityScoreIfFresh(selectedDetails)) + "/100" : "—"} /><Metric label={t("analytics.salesDay")} value={formatNumber(freshSales?.stats?.sales_per_day, locale)} /></div>
                   {analyticsMarket === "csmoney" && detailVariantId ? <WikiTradeHistory variantId={detailVariantId} locale={locale} /> : <>
                     <div className={styles.chartHeader}><div><h3>{t("analytics.history")}</h3><span>{t("analytics.points", { count: visibleSales.length })}</span></div><div>{(["24h", "7d", "14d", "all"] as HistoryPeriod[]).map((item) => <button className={period === item ? styles.activeChip : ""} type="button" key={item} disabled={item !== period && filterSalesByPeriod(currentSales, item).length === 0} onClick={() => setPeriod(item)}>{t(item === "all" ? "analytics.periodAll" : `analytics.period${item}`)}</button>)}</div></div>
-                    {!selectedCapability?.supports_sales_history ? <div className={styles.emptyState}>{t("analytics.historyUnavailable")}</div> : currentSales.length ? <Suspense fallback={<div className={styles.emptyState}>{t("common.loading")}</div>}><SalesChart sales={visibleSales} period="all" /></Suspense> : <div className={styles.emptyState}>{selectedDetails?.sales_error ?? t("analytics.historyEmpty")}</div>}
+                    {!selectedCapability?.supports_sales_history ? <div className={styles.emptyState}>{t("analytics.historyUnavailable")}</div> : currentSales.length ? <Suspense fallback={<div className={styles.emptyState}>{t("common.loading")}</div>}><SalesChart sales={visibleSales} period="all" /></Suspense> : <div className={styles.emptyState}>{t(selectedDetails?.sales_error ? "analytics.dataUnavailable" : "analytics.historyEmpty")}</div>}
                     {selectedCapability?.supports_sales_history && <><p className={styles.sourceNote}>{t("analytics.sourceNote")}</p><DataTable headers={[t("analytics.date"), t("analytics.price"), "Float"]} rows={visibleSales.slice(0, 50).map((sale) => [formatDate(sale.sold_at, locale), formatUsd(sale.price_cents, locale), sale.float_value?.toFixed(8) ?? "—"])} /></>}
                   </>}
                 </section>}
@@ -302,7 +302,6 @@ function WikiTradeHistory({ variantId, locale }: { variantId: string; locale: st
       : query.isError || query.data?.error ? <MarketplaceListingState title={t("analytics.tradeHistoryError")} onRetry={() => void query.refetch()} />
       : points.length ? <Suspense fallback={<div className={styles.emptyState}>{t("common.loading")}</div>}><PriceHistoryChart points={points} /></Suspense>
         : <div className={styles.emptyState}>{t("analytics.wikiTradePriceUnavailable")}</div>}
-    {points.length > 0 && query.data?.latest_at && <p className={styles.sourceNote}>{t("analytics.wikiTradePriceLatest", { date: formatDate(query.data.latest_at, locale), price: formatUsd(points.at(-1)?.price_cents, locale) })}</p>}
     <p className={styles.sourceNote}>{t("analytics.historyUnavailable")}</p>
   </>;
 }
@@ -345,31 +344,24 @@ export function selectedListingIsStale(listing: Listing, snapshot?: SourceSnapsh
   return Boolean(listing.stale) || listingSnapshotStale(snapshot, listing.variant_id);
 }
 
-export function SourceStateStatus({ snapshot, locale, fallback = false }: { snapshot?: SourceSnapshot; locale: string; fallback?: boolean }) {
+export function SourceStateStatus({ snapshot, fallback = false }: { snapshot?: SourceSnapshot; fallback?: boolean }) {
   const { t } = useTranslation();
   if (!snapshot?.source_state && !fallback) return null;
   return <div role="status" className={styles.snapshotStatus}>
     <strong>{t(sourceStatusKey(snapshot))}</strong>
-    {snapshot?.fetched_at && <span> · {t("analytics.updated", { date: formatDate(snapshot.fetched_at, locale) })}</span>}
     {!snapshot?.source_state && (snapshot?.is_stale ?? snapshot?.stale) && <span> · {t("analytics.stale")}</span>}
     {!snapshot?.source_state && snapshot?.is_partial && <span> · {t("listings.snapshotPartial")}</span>}
-    {snapshot?.source_state && <p>{t(snapshot.source_state === "summary_only" ? "marketSource.summaryNote" : `marketSource.${snapshot.source_state}Note`)}</p>}
-    {snapshot?.source_state === "partial" && snapshot.variant_states?.map((state) => <p key={state.variant_id}>
-      {t("marketSource.variantState", { variant: state.variant_id, state: t(sourceStatusLabels[state.source_state]) })}
-      {state.fetched_at && <> · {t("analytics.updated", { date: formatDate(state.fetched_at, locale) })}</>}
-    </p>)}
   </div>;
 }
 
-function ListingSnapshotStatus({ snapshot, locale }: { snapshot: SourceSnapshot; locale: string }) {
+function ListingSnapshotStatus({ snapshot }: { snapshot: SourceSnapshot }) {
   const { t } = useTranslation();
   const labels = [
-    !snapshot.source_state && snapshot.fetched_at && t("listings.snapshotUpdated", { date: formatDate(snapshot.fetched_at, locale) }),
-    (snapshot.is_stale ?? snapshot.stale) && t("listings.snapshotStale"),
+    !snapshot.source_state && (snapshot.is_stale ?? snapshot.stale) && t("listings.snapshotStale"),
     !snapshot.source_state && snapshot.is_partial && snapshot.quote_source !== "wiki_market_summary" && t("listings.snapshotPartial"),
     snapshot.refresh_queued && t("listings.snapshotQueued"),
   ].filter(Boolean);
-  return <><SourceStateStatus snapshot={snapshot} locale={locale} />{labels.length ? <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p> : null}</>;
+  return <><SourceStateStatus snapshot={snapshot} />{labels.length ? <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p> : null}</>;
 }
 
 
@@ -402,17 +394,15 @@ export function detailComponentForTab(tab: Tab): DetailComponentName | undefined
   return undefined;
 }
 
-function DetailComponentStatus({ details, component, locale }: { details: MarketplaceDetails; component?: DetailComponentName; locale: string }) {
+function DetailComponentStatus({ details, component }: { details: MarketplaceDetails; component?: DetailComponentName }) {
   const { t } = useTranslation();
   if (!component) return null;
   const state = details.components?.[component];
-  if (!state) return null;
+  if (!state || state.status === "fresh") return null;
   const componentLabel = t(detailComponentLabels[component]);
   const statusLabel = t(detailStatusLabels[state.status]);
   const labels = [
     `${componentLabel}: ${statusLabel}`,
-    state.fetched_at && t("analytics.updated", { date: formatDate(state.fetched_at, locale) }),
-    state.error,
   ].filter(Boolean);
   return <p className={styles.snapshotStatus} role="status">{labels.join(" · ")}</p>;
 }
@@ -491,16 +481,16 @@ function ComparePanel({ marketplaces, details, comparison, selectedListing, fall
       <ComparisonPreview title={t("analytics.sellPreview")} marketplace={sellConfig?.display_name ?? sell} listing={sellPreview} fallbackImage={selectedListing?.image_url ?? fallbackImage} price={sellQuote} locale={locale} />
     </div>
     <div className={styles.metricGrid}><Metric label={`${t("analytics.buy")} · ask`} value={formatUsd(buyQuote, locale)} /><Metric label={effectiveSellMode === "fast_buy" ? `${t("analytics.sell")} · bid` : `${t("analytics.sell")} · ask`} value={formatUsd(sellQuote, locale)} /><Metric label={t("analytics.bidDepth")} value={String(freshDetails(sell, "buy_orders")?.quick_sell?.near_bid_depth ?? "—")} /><Metric label={t("analytics.netProfit")} value={formatUsd(result?.profit_cents, locale)} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /><Metric label={t("analytics.roi")} value={result ? (result.effective_buy_cents === 0 ? "—" : `${result.cash_roi_percent}%`) : "—"} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /></div>
-    <FlipRiskNotice level={riskLevel} score={sellScore} cashRoiPercent={result?.cash_roi_percent} sellMarketplace={sell} dataStatus={sellDetail?.stats?.liquidity_data_status ?? comparedSale?.sell_liquidity?.data_status} />
+    <FlipRiskNotice level={riskLevel} score={sellScore} />
     <QuoteProvenance buy={buyAsk.source} sell={sellQuote == null ? null : effectiveSellMode === "fast_buy" ? "best_bid" : sellAsk.source} />
     {result?.applied_fees && <div className={styles.feeBreakdown}><Metric label={t("calculator.depositFee")} value={formatUsd(result.deposit_fee_cents, locale)} /><Metric label={t("calculator.sellFee")} value={formatUsd(result.sell_fee_cents, locale)} /><Metric label={t("calculator.withdrawFee")} value={formatUsd(result.withdraw_fee_cents, locale)} /></div>}
     {!supportsSelectedSale && <p className={styles.sourceNote}>{t("analytics.quickUnavailable")}</p>}
     {calculationQuery.isError && <p className={styles.sourceNote}>{t("calculator.serverError")}</p>}
     {effectiveSellMode === "fast_buy" && sellSource?.components?.buy_orders
-      ? <DetailComponentStatus details={sellSource} component="buy_orders" locale={locale} />
+      ? <DetailComponentStatus details={sellSource} component="buy_orders" />
       : effectiveSellMode === "listing" && !sellSource?.source_state && sellSource?.components?.listings
-        ? <DetailComponentStatus details={sellSource} component="listings" locale={locale} />
-        : <SourceStateStatus snapshot={sellSource} locale={locale} fallback />}
+        ? <DetailComponentStatus details={sellSource} component="listings" />
+        : <SourceStateStatus snapshot={sellSource} fallback />}
   </section>;
 }
 

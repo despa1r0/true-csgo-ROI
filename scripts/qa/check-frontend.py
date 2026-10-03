@@ -35,7 +35,10 @@ def check(url: str, output: Path) -> None:
         source="storefront" if market == "csmoney" else "listing") for market, price in prices.items()}
     compared = dict(skin_id=skin["id"], marketplaces=[], variants=[dict(variant_id=variant["id"],
         market_hash_name=variant_name, markets=quotes, errors={}, cheapest_marketplace="csmoney",
-        cheapest_price_cents=3900, gross_spread_cents=1300, opportunities=[])])
+        cheapest_price_cents=3900, gross_spread_cents=1300, opportunities=[dict(
+            variant_id=variant["id"], buy_marketplace="csmoney", sell_marketplace="csfloat",
+            buy_price_cents=3900, sell_price_cents=4088,
+            profit_cents=188, cash_roi_percent=4.82, risk_level="unknown", sell_liquidity=None)])])
 
     def listing(market: str) -> dict:
         return dict(listing_id=f"{market}-1", variant_id=variant["id"], market_hash_name=variant_name,
@@ -49,7 +52,7 @@ def check(url: str, output: Path) -> None:
         if path == "/api/health": data = {"catalogue": {"skins": 100}}
         elif path == "/api/marketplaces": data = marketplace_options()
         elif path == "/api/catalog/filters": data = dict(item_types=[], weapons=[], rarities=[], collections=[])
-        elif path == "/api/items/search": data = [skin]
+        elif path == "/api/items/search": data = [skin] + [dict(skin, id=f"skin-other-{index}", name=f"{skin['name']} {index}") for index in range(1, 8)]
         elif path == f"/api/skins/{skin['id']}": data = dict(**skin, collections=[], qualities=[dict(wear="Field-Tested", variants=[variant])])
         elif path.endswith("/markets/compare"): data = compared
         elif path == f"/api/skins/{skin['id']}/market/csmoney": data = dict(marketplace="CS.MONEY",
@@ -93,10 +96,16 @@ def check(url: str, output: Path) -> None:
             raise
         page.locator("#skin-search-suggestions button").first.click()
         quality_card = page.locator("button[class*='qualityCard']").first
+        quality_card.locator("[role='status']").wait_for()
+        assert quality_card.locator("[role='status']").inner_text() == "Liquidity not rated"
+        assert quality_card.locator("[role='status']").evaluate("e => getComputedStyle(e).backgroundColor") == "rgba(0, 0, 0, 0)"
+        assert quality_card.locator("[class*='sourceNote']").count() == 0
+        page.screenshot(path=str(output / "catalogue-compact-card.png"), full_page=True)
         quality_card.scroll_into_view_if_needed()
         catalogue_scroll = page.evaluate("window.scrollY")
         quality_card.click()
         page.locator("select[name='listing-marketplace']").select_option("csmoney")
+        assert page.locator("div[class*='snapshotStatus']").filter(has_text="Updated").count() == 0
         page.locator("input[name='minimum-price']").fill("10")
         page.get_by_role("button", name="Apply", exact=True).click()
         last_listing = page.locator("button[class*='listingCard']").last
@@ -125,6 +134,42 @@ def check(url: str, output: Path) -> None:
         page.reload()
         assert page.locator("select[name='listing-marketplace']").input_value() == "csmoney"
         print("Browse: calculator return, Back, Forward, filters, scroll restoration and reload passed", flush=True)
+
+        # Reproduce the reported overlap with no skin selected and with an active reference.
+        for width, selected in [(1440, False), (1440, True), (390, False), (320, True)]:
+            page.set_viewport_size(dict(width=width, height=1000))
+            suffix = f"?skin={skin['id']}&variant={variant['id']}" if selected else ""
+            page.goto(f"{url}/calculator{suffix}")
+            if selected: page.locator("select[name='skin-variant']").wait_for()
+            search = page.locator("#calculator-skin-search")
+            search.fill("code")
+            results = page.locator("#calculator-suggestions button")
+            results.first.wait_for()
+            search.scroll_into_view_if_needed()
+            # Hit-test a visible result where the list overlaps the form underneath.
+            results.nth(1).scroll_into_view_if_needed()
+            assert results.nth(1).evaluate("""button => {
+                const r = button.getBoundingClientRect();
+                const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                return button.contains(hit);
+            }"""), f"Suggestions obscured: {width}px selected={selected}"
+            assert page.locator("html").evaluate("e => e.scrollWidth") <= width
+            page.screenshot(path=str(output / f"calculator-suggestions-{width}-{'selected' if selected else 'empty'}.png"), full_page=True)
+            search.press("ArrowDown")
+            assert results.first.evaluate("button => button === document.activeElement")
+            results.first.press("Escape")
+            assert page.locator("#calculator-suggestions").count() == 0
+            assert search.evaluate("input => input === document.activeElement")
+            search.fill("code r")
+            results.first.wait_for()
+            results.first.click()
+            page.locator("select[name='skin-variant']").wait_for()
+            assert page.locator("#calculator-suggestions").count() == 0
+            search.fill("code")
+            results.first.wait_for()
+            page.locator("h1").click()
+            assert page.locator("#calculator-suggestions").count() == 0
+            print(f"Suggestions: {width}px selected={selected}, overlay, keyboard, selection and dismissal passed", flush=True)
 
         for language, width in [("en", 1440), ("ru", 1024), ("ru", 390), ("ru", 320)]:
             if width == 320:

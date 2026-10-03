@@ -62,6 +62,12 @@ Testing Library/MSW и декоративная Motion-зависимость; �
 
 ## Оставшиеся подэтапы
 
+Cleanup от 3 октября: четыре файла тестов переведены с compatibility facade
+на `services.market_data` и `analytics.liquidity`; `backend/app/market_data.py`
+и `ForFuture.md` удалены. Исторические отчёты перенесены в `docs/archive/`, ссылки
+обновлены. Shell-тесты на Windows явно используют Git Bash. Подробности и сохранённые
+незакоммиченные файлы старого worktree — в [отчёте очистки](ARCHITECTURE_CLEANUP_2026-10-03.md).
+
 1. Завершить этап 3: по одному провайдеру отделить orchestration/services от
    доступа к PostgreSQL и внешних API, не меняя response-контракты.
 2. Выполнить этап 4: добавить Alembic baseline, безопасный upgrade существующей

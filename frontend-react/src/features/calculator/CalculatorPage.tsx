@@ -31,6 +31,7 @@ export function CalculatorPage() {
   const [sellMode, setSellMode] = useState<SellMode>("listing");
   const [fees, setFees] = useState<FeeFlags>(presetFlags.smart);
   const [skinSearch, setSkinSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [skinId, setSkinId] = useState<string | null>(searchParams.get("skin"));
   const [variantId, setVariantId] = useState<string | null>(searchParams.get("variant"));
@@ -107,7 +108,37 @@ export function CalculatorPage() {
   return <div className={styles.page}>
     <header className={styles.hero}><span>{t("calculator.eyebrow")}</span><h1>{t("calculator.title")}</h1><p>{t("calculator.subtitle")}</p></header>
     <section className={styles.skinReference}>
-      <div className={styles.searchWrap}><label htmlFor="calculator-skin-search">{t("calculator.optionalSkin")}</label><input id="calculator-skin-search" name="calculator-skin-search" autoComplete="off" type="search" value={skinSearch} onChange={(event) => setSkinSearch(event.target.value)} placeholder={t("calculator.skinPlaceholder")} />{debouncedSearch.length >= 2 && skinSearch !== skinQuery.data?.name && <div className={styles.suggestions}>{skinSearchQuery.data?.map((item) => <button type="button" key={item.id} onClick={() => selectSkin(item)}><img src={item.image_url ?? ""} alt="" width="112" height="80" loading="lazy" /><span><strong>{item.name}</strong><small>{item.weapon_name}</small></span></button>)}</div>}</div>
+      <div className={styles.searchWrap}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false); }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.currentTarget.querySelector("input")?.focus();
+            setSearchOpen(false);
+          }
+          if (event.key === "ArrowDown" && event.target instanceof HTMLInputElement) {
+            const first = event.currentTarget.querySelector("button");
+            event.preventDefault();
+            if (first) first.focus();
+            else setSearchOpen(true);
+          }
+        }}>
+        <label htmlFor="calculator-skin-search">{t("calculator.optionalSkin")}</label>
+        <input id="calculator-skin-search" name="calculator-skin-search" autoComplete="off" type="search"
+          value={skinSearch} onFocus={() => setSearchOpen(true)}
+          onChange={(event) => { setSkinSearch(event.target.value); setSearchOpen(true); }}
+          aria-expanded={searchOpen && debouncedSearch.length >= 2 && skinSearch !== skinQuery.data?.name}
+          aria-controls="calculator-suggestions" placeholder={t("calculator.skinPlaceholder")} />
+        {searchOpen && debouncedSearch.length >= 2 && skinSearch !== skinQuery.data?.name &&
+          <ul id="calculator-suggestions" className={styles.suggestions} aria-label={t("calculator.optionalSkin")}>
+            {skinSearchQuery.isPending ? <li role="status">{t("common.loading")}</li>
+              : skinSearchQuery.isError ? <li role="status">{t("calculator.serverError")}</li>
+              : !skinSearchQuery.data?.length ? <li role="status">{t("common.noData")}</li>
+              : skinSearchQuery.data.map((item) => <li key={item.id}><button type="button" onClick={() => { selectSkin(item); setSearchOpen(false); }}>
+                <img src={item.image_url ?? ""} alt="" width="112" height="80" loading="lazy" />
+                <span><strong>{item.name}</strong><small>{item.weapon_name}</small></span>
+              </button></li>)}
+          </ul>}
+      </div>
       {skinQuery.data ? <div className={styles.selectedSkin}>
         <div className={styles.referencePreview}>{skinQuery.data.image_url && <img src={skinQuery.data.image_url} alt="" width="160" height="128" />}</div>
         <div className={styles.referenceCopy}><span>{t("calculator.marketReference")}</span><strong>{skinQuery.data.name}</strong>
@@ -145,14 +176,14 @@ export function CalculatorPage() {
           <FeeToggle name="withdraw-fee" checked={fees.withdraw} disabled={mode !== "custom"} onChange={() => toggleFee("withdraw")} title={t("calculator.withdrawFee")} rule={sellConfig?.fees.withdraw[withdrawMethod]} />
         </fieldset>
         <button className={styles.submit} type="submit" disabled={calculation.isPending}>{calculation.isPending ? t("common.loading") : t("calculator.calculate")}</button>
-        {calculation.isError && <p className={styles.error} role="status">{calculation.error.message || t("calculator.serverError")}</p>}
+        {calculation.isError && <p className={styles.error} role="status">{t("calculator.serverError")}</p>}
       </section>
 
       <section className={styles.resultPanel} aria-live="polite">
         <header><span>{t("calculator.result")}</span>{calculation.data && <strong className={calculation.data.profit_cents > 0 ? styles.resultPositive : calculation.data.profit_cents < 0 ? styles.resultNegative : ""}>{t(calculation.data.profit_cents > 0 ? "calculator.positive" : calculation.data.profit_cents < 0 ? "calculator.negative" : "calculator.neutral")}</strong>}</header>
         {calculation.data ? <div className={styles.resultBody}>
           <div className={styles.heroResult}><span>{t("calculator.netProfit")}</span><strong className={calculation.data.profit_cents >= 0 ? styles.resultPositive : styles.resultNegative}>{calculation.data.profit_cents > 0 ? "+" : ""}{formatUsd(calculation.data.profit_cents, locale)}</strong><small>{t("calculator.cashRoi")} · {calculation.data.effective_buy_cents === 0 ? "—" : `${calculation.data.cash_roi_percent}%`}</small></div>
-          <FlipRiskNotice level={riskLevel} score={sellLiquidity?.score} cashRoiPercent={calculation.data.cash_roi_percent} sellMarketplace={sellMarket} dataStatus={sellLiquidity?.data_status} />
+          <FlipRiskNotice level={riskLevel} score={sellLiquidity?.score} />
           <ResultRow label={t("calculator.effectiveBuy")} value={formatUsd(calculation.data.effective_buy_cents, locale)} /><ResultRow label={t("calculator.depositFee")} value={formatUsd(calculation.data.deposit_fee_cents, locale)} />
           <ResultRow label={t("calculator.effectivePayout")} value={formatUsd(calculation.data.effective_payout_cents, locale)} /><ResultRow label={t("calculator.sellFee")} value={formatUsd(calculation.data.sell_fee_cents, locale)} /><ResultRow label={t("calculator.withdrawFee")} value={formatUsd(calculation.data.withdraw_fee_cents, locale)} />
           <div className={styles.roiGrid}><ResultMetric label={t("calculator.grossProfit")} value={formatUsd(calculation.data.gross_profit_cents, locale)} note={`${t("calculator.grossRoi")} · ${calculation.data.buy_price_cents === 0 ? "—" : `${calculation.data.gross_roi_percent}%`}`} /><ResultMetric label={t("calculator.marketProfit")} value={formatUsd(calculation.data.market_profit_cents, locale)} note={`${t("calculator.marketRoi")} · ${calculation.data.buy_price_cents === 0 ? "—" : `${calculation.data.market_roi_percent}%`}`} /><ResultMetric label={t("calculator.breakEven")} value={formatUsd(calculation.data.break_even_sell_price_cents, locale)} /></div>

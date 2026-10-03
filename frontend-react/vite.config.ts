@@ -3,7 +3,9 @@ import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+export default defineConfig(({ command, mode, isPreview }) => ({
+  // A build can never contain diagnostics, regardless of NODE_ENV or .env flags.
+  define: { __TRUE_ROI_DIAGNOSTICS__: command === "serve" && !isPreview && mode !== "production" },
   plugins: [react()],
   resolve: {
     alias: {
@@ -22,4 +24,4 @@ export default defineConfig({
   preview: {
     port: 4173,
   },
-});
+}));

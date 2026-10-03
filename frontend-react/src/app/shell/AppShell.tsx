@@ -38,6 +38,7 @@ export function AppShell() {
         </NavLink>
 
         <nav className={styles.navigation} aria-label={t("app.navigationLabel")}>
+          {__TRUE_ROI_DIAGNOSTICS__ && <NavLink className={({ isActive }) => (isActive ? styles.activeLink : styles.link)} to="/debug" translate="no">Debug</NavLink>}
           <NavLink className={({ isActive }) => (isActive ? styles.activeLink : styles.link)} end to="/" viewTransition>
             <MarketIcon />
             {t("navigation.catalog")}

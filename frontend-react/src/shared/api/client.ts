@@ -1,4 +1,5 @@
 import type { ApiErrorBody } from "./types";
+import { recordRequest } from "@/features/debug/requestLog";
 
 type QueryValue = string | number | boolean | null | undefined;
 
@@ -51,25 +52,34 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const { body, headers, query, ...requestInit } = options;
   const url = buildUrl(path, query);
   const hasJsonBody = body !== undefined && !(body instanceof FormData);
-  const response = await fetch(url, {
-    ...requestInit,
-    body: body === undefined ? undefined : hasJsonBody ? JSON.stringify(body) : (body as BodyInit),
-    headers: {
-      Accept: "application/json",
-      ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
-      ...headers,
-    },
-  });
-  const responseBody = await parseResponseBody(response);
+  const started = __TRUE_ROI_DIAGNOSTICS__ ? performance.now() : 0;
+  let status: number | null = null;
+  try {
+    const response = await fetch(url, {
+      ...requestInit,
+      body: body === undefined ? undefined : hasJsonBody ? JSON.stringify(body) : (body as BodyInit),
+      headers: {
+        Accept: "application/json",
+        ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
+        ...headers,
+      },
+    });
+    status = response.status;
+    const responseBody = await parseResponseBody(response);
 
-  if (!response.ok) {
-    const errorBody =
-      responseBody && typeof responseBody === "object" ? (responseBody as ApiErrorBody) : null;
-    const detail = typeof errorBody?.detail === "string" ? errorBody.detail : null;
-    throw new ApiError(detail ?? response.statusText ?? "API request failed", response.status, url, errorBody);
+    if (!response.ok) {
+      const errorBody =
+        responseBody && typeof responseBody === "object" ? (responseBody as ApiErrorBody) : null;
+      const detail = typeof errorBody?.detail === "string" ? errorBody.detail : null;
+      throw new ApiError(detail ?? response.statusText ?? "API request failed", response.status, url, errorBody);
+    }
+
+    if (__TRUE_ROI_DIAGNOSTICS__) recordRequest({ at: Date.now(), method: requestInit.method ?? "GET", path: url, status, duration: performance.now() - started });
+    return responseBody as T;
+  } catch (error) {
+    if (__TRUE_ROI_DIAGNOSTICS__) recordRequest({ at: Date.now(), method: requestInit.method ?? "GET", path: url, status, duration: performance.now() - started, error: error instanceof Error ? error.message : "Request failed" });
+    throw error;
   }
-
-  return responseBody as T;
 }
 
 export const apiClient = {

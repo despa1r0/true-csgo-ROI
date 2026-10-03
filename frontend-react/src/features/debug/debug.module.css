@@ -1,0 +1,22 @@
+.page { display: grid; gap: 2rem; padding-block: 2rem; }
+.page h1 { margin: .7rem 0; font-size: clamp(2rem, 5vw, 3.5rem); letter-spacing: -.04em; }
+.page h2 { font-size: 1.25rem; }
+.page h3 { font-size: .9rem; color: var(--color-text-secondary); }
+.page p { color: var(--color-text-muted); line-height: 1.6; }
+.badge { padding: .3rem .55rem; border: 1px solid var(--color-accent-primary); border-radius: .35rem; color: var(--color-accent-primary); font-family: var(--font-family-mono); }
+.page button { padding: .55rem .8rem; border: 1px solid var(--color-border-strong); border-radius: .5rem; background: var(--color-surface); color: var(--color-text-primary); cursor: pointer; }
+.page button:hover { background: var(--color-surface-hover); }
+.page button:disabled { opacity: .45; cursor: default; }
+.page button:focus-visible, .query summary:focus-visible { outline: 2px solid var(--color-accent-primary); outline-offset: 3px; }
+.table { overflow-x: auto; margin-top: 1rem; border: 1px solid var(--color-border-subtle); border-radius: .7rem; }
+.table table { width: 100%; border-collapse: collapse; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.table td, .table th { padding: .6rem .75rem; border-bottom: 1px solid var(--color-border-subtle); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.table th { color: var(--color-text-muted); }
+.query { padding: 1rem; margin: .65rem 0; border: 1px solid var(--color-border-subtle); border-radius: .7rem; background: var(--color-surface); }
+.query summary { cursor: pointer; font-family: var(--font-family-mono); font-size: .85rem; overflow-wrap: anywhere; }
+.query dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .5rem 1rem; font-size: .8rem; }
+.query dl > div { display: contents; }
+.query dt, .query dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.query dt { color: var(--color-text-muted); }
+.query dd { font-family: var(--font-family-mono); }
+@media (max-width: 40rem) { .query dl { grid-template-columns: minmax(0, 1fr); } .query dd { margin-bottom: .7rem; } }

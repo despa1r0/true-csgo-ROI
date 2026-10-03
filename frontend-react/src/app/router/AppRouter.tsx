@@ -7,6 +7,8 @@ import { RouteErrorPage } from "@/pages/RouteErrorPage";
 
 const CatalogPage = lazy(() => import("@/features/catalog/CatalogPage").then((module) => ({ default: module.CatalogPage })));
 const CalculatorPage = lazy(() => import("@/features/calculator/CalculatorPage").then((module) => ({ default: module.CalculatorPage })));
+// Vite removes this route and its lazy import from every production build.
+const DebugPage = __TRUE_ROI_DIAGNOSTICS__ ? lazy(() => import("@/features/debug/DebugPage").then((module) => ({ default: module.DebugPage }))) : null;
 
 function LoadingFallback() {
   const { t } = useTranslation();
@@ -21,6 +23,7 @@ const router = createBrowserRouter([
     element: <AppShell />,
     errorElement: <RouteErrorPage />,
     children: [
+      ...(DebugPage ? [{ path: "debug", element: <Suspense fallback={loading}><DebugPage /></Suspense> }] : []),
       {
         index: true,
         element: <Suspense fallback={loading}><CatalogPage /></Suspense>,

@@ -205,6 +205,18 @@ export type MarketComparisonResponse = {
   variants: VariantComparison[];
 };
 
+export type CachedMarketPrices = {
+  marketplace: string;
+  cache_ttl_seconds: number;
+  refresh_queued: boolean;
+  variants: Array<{
+    variant_id: string;
+    market_hash_name: string;
+    listing: MarketPrice | null;
+    error?: string | null;
+  }>;
+};
+
 export type Sale = { sold_at: string; price_cents: number; float_value?: number | null };
 export type WikiPriceHistory = {
   source: "csmoney_wiki_trade_quote";

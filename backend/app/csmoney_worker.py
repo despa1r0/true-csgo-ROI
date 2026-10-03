@@ -45,16 +45,53 @@ def _browser_retry_delay() -> int:
 
 
 def container_memory_bytes() -> int | None:
-    """Read total worker/container usage, including Firefox, on cgroup v2 or v1."""
-    for filename in ("/sys/fs/cgroup/memory.current",
-                     "/sys/fs/cgroup/memory/memory.usage_in_bytes"):
+    """Read the container working set; reclaimable file cache must not cause rotations."""
+    for directory, usage_file, cache_key in (
+        ("/sys/fs/cgroup", "memory.current", "inactive_file"),
+        ("/sys/fs/cgroup/memory", "memory.usage_in_bytes", "total_inactive_file"),
+    ):
         try:
-            value = int(Path(filename).read_text().strip())
+            value = int((Path(directory) / usage_file).read_text().strip())
         except (OSError, ValueError):
             continue
         if value >= 0:
-            return value
+            try:
+                stats = dict(line.split() for line in (Path(directory) / "memory.stat").read_text().splitlines())
+                cache = max(0, int(stats.get(cache_key, "0")))
+            except (OSError, ValueError):
+                cache = 0
+            return max(0, value - cache)
     return None
+
+
+def _configure_collection_context(context) -> None:
+    """Only decorative resources are omitted; HTML, scripts and challenges still load."""
+    def route_request(route):
+        if route.request.resource_type in {"image", "media", "font"}:
+            route.abort()
+        else:
+            route.continue_()
+
+    context.route("**/*", route_request)
+
+
+def _capture_variant_in_tab(page, market_hash_name: str, *, phase: str | None):
+    """Keep cookies in the shared context, but never retain a storefront document between jobs."""
+    tab = None
+    try:
+        tab = page.context.new_page()
+        return capture_variant(tab, market_hash_name, phase=phase)
+    except Exception as error:
+        if is_browser_failure(error):
+            raise CsMoneyBrowserError("CS.MONEY collection tab unavailable") from error
+        raise
+    finally:
+        if tab is not None:
+            try:
+                tab.close()
+            except Exception as error:
+                if not is_browser_failure(error):
+                    LOG.warning("CS.MONEY collection tab cleanup failed: %s", type(error).__name__)
 
 
 def _new_browser():
@@ -206,7 +243,7 @@ def process_one(page) -> bool:
             _wiki_failure(variant_id, error, attempts=job["attempts"])
         return True
     try:
-        capture = capture_variant(
+        capture = _capture_variant_in_tab(
             page,
             context["market_hash_name"],
             phase=context.get("phase"),
@@ -283,7 +320,9 @@ def run(*, once: bool = False) -> None:
         try:
             with _new_browser() as browser:
                 try:
-                    page = browser.new_page()
+                    context = browser.new_context(service_workers="block")
+                    _configure_collection_context(context)
+                    page = context.new_page()
                 except Exception as error:
                     if not is_browser_failure(error):
                         raise
@@ -347,6 +386,10 @@ def run(*, once: bool = False) -> None:
             if once:
                 return
         elif restart_reason in {"browser_unavailable", "memory"}:
+            if restart_reason == "memory" and session_jobs:
+                # This is a planned rotation after useful work, not a failed recovery.
+                restart_failures = 0
+                continue
             restart_failures += 1
             LOG.warning("CS.MONEY browser restart reason=%s consecutive_failures=%d",
                         restart_reason, restart_failures)

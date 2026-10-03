@@ -7,6 +7,7 @@ import { api, type CalculationRequest, type CatalogueSearchResult, type PaymentM
 import { feeLabel, formatUsd, parseMoneyToCents } from "@/shared/lib/format";
 import { FlipRiskNotice } from "@/features/catalog/FlipRiskNotice";
 import { flipRiskLevel } from "@/features/catalog/flipRisk";
+import { csMoneyRefreshInterval, mergeCsMoneyPrices } from "@/features/catalog/csMoneyComparison";
 import styles from "./calculator.module.css";
 
 type FeeFlags = { deposit: boolean; sell: boolean; withdraw: boolean };
@@ -44,10 +45,12 @@ export function CalculatorPage() {
   const skinSearchQuery = useQuery({ queryKey: ["calculator-search", debouncedSearch], queryFn: ({ signal }) => api.searchSkins({ q: debouncedSearch, limit: 8 }, signal), enabled: debouncedSearch.length >= 2 });
   const skinQuery = useQuery({ queryKey: ["skin", skinId], queryFn: ({ signal }) => api.skinDetails(skinId!, signal), enabled: Boolean(skinId) });
   const comparisonQuery = useQuery({ queryKey: ["calculator-comparison", skinId], queryFn: ({ signal }) => api.marketComparison(skinId!, { profit_mode: "raw", deposit_method: "crypto", withdraw_method: "crypto", use_deposit_fee: false }, signal), enabled: Boolean(skinId) });
+  const cachedComparisonQuery = useQuery({ queryKey: ["calculator-cached-comparison", skinId], queryFn: ({ signal }) => api.marketComparison(skinId!, { profit_mode: "raw", deposit_method: "crypto", withdraw_method: "crypto", use_deposit_fee: false, cached_only: true }, signal), enabled: Boolean(skinId), staleTime: 15_000 });
+  const csMoneyPriceQuery = useQuery({ queryKey: ["csmoney-prices", skinId], queryFn: ({ signal }) => api.csMoneyPrices(skinId!, signal), enabled: Boolean(skinId), staleTime: 15_000, refetchInterval: (query) => csMoneyRefreshInterval(query.state.data) });
+  const comparedVariants = useMemo(() => [...mergeCsMoneyPrices(comparisonQuery.data ?? cachedComparisonQuery.data, csMoneyPriceQuery.data).values()], [comparisonQuery.data, cachedComparisonQuery.data, csMoneyPriceQuery.data]);
   const selectedVariant = useMemo(() => {
-    if (!comparisonQuery.data?.variants.length) return undefined;
-    return comparisonQuery.data.variants.find((item) => item.variant_id === variantId) ?? comparisonQuery.data.variants[0];
-  }, [comparisonQuery.data, variantId]);
+    return comparedVariants.find((item) => item.variant_id === variantId) ?? (variantId ? undefined : comparedVariants[0]);
+  }, [comparedVariants, variantId]);
   useEffect(() => { if (selectedVariant && !variantId) setVariantId(selectedVariant.variant_id); }, [selectedVariant, variantId]);
   const sellDetailsQuery = useQuery({ queryKey: ["calculator-detail", selectedVariant?.variant_id, sellMarket], queryFn: ({ signal }) => api.variantDetails(selectedVariant!.variant_id, sellMarket, signal), enabled: Boolean(selectedVariant?.variant_id && sellMode === "fast_buy") });
 
@@ -57,8 +60,10 @@ export function CalculatorPage() {
   const buyConfig = marketplaces.find((item) => item.id === buyMarket);
   const sellConfig = marketplaces.find((item) => item.id === sellMarket);
   const eligibleSellOptions = mode === "quick_flip" || sellMode === "fast_buy" ? sellOptions.filter((item) => item.capabilities.supports_quick_sell) : sellOptions;
-  const buyReference = selectedVariant?.markets[buyMarket]?.price_cents;
-  const sellReference = sellMode === "fast_buy" ? sellDetailsQuery.data?.quick_sell?.best_price_cents : selectedVariant?.markets[sellMarket]?.price_cents;
+  const buyQuote = selectedVariant?.markets[buyMarket];
+  const sellQuote = selectedVariant?.markets[sellMarket];
+  const buyReference = buyQuote && !buyQuote.stale ? buyQuote.price_cents : undefined;
+  const sellReference = sellMode === "fast_buy" ? sellDetailsQuery.data?.components?.buy_orders?.status === "fresh" ? sellDetailsQuery.data?.quick_sell?.best_price_cents : undefined : sellQuote && !sellQuote.stale ? sellQuote.price_cents : undefined;
   const buyCents = parseMoneyToCents(buyPrice);
   const sellCents = parseMoneyToCents(sellPrice);
   const calculationRequest = (purchasePriceCents: number): CalculationRequest => ({ buy_price_cents: purchasePriceCents, sell_price_cents: sellCents!, buy_marketplace: buyMarket, sell_marketplace: sellMarket, profit_mode: mode, deposit_method: depositMethod, withdraw_method: withdrawMethod, sell_mode: sellMode, use_deposit_fee: fees.deposit, use_sell_fee: fees.sell, use_withdraw_fee: fees.withdraw });
@@ -103,14 +108,22 @@ export function CalculatorPage() {
     <header className={styles.hero}><span>{t("calculator.eyebrow")}</span><h1>{t("calculator.title")}</h1><p>{t("calculator.subtitle")}</p></header>
     <section className={styles.skinReference}>
       <div className={styles.searchWrap}><label htmlFor="calculator-skin-search">{t("calculator.optionalSkin")}</label><input id="calculator-skin-search" name="calculator-skin-search" autoComplete="off" type="search" value={skinSearch} onChange={(event) => setSkinSearch(event.target.value)} placeholder={t("calculator.skinPlaceholder")} />{debouncedSearch.length >= 2 && skinSearch !== skinQuery.data?.name && <div className={styles.suggestions}>{skinSearchQuery.data?.map((item) => <button type="button" key={item.id} onClick={() => selectSkin(item)}><img src={item.image_url ?? ""} alt="" width="112" height="80" loading="lazy" /><span><strong>{item.name}</strong><small>{item.weapon_name}</small></span></button>)}</div>}</div>
-      {skinQuery.data ? <div className={styles.selectedSkin}><img src={skinQuery.data.image_url ?? ""} alt="" width="160" height="128" /><div><span>{t("calculator.marketReference")}</span><strong>{skinQuery.data.name}</strong><select name="skin-variant" aria-label={t("calculator.variant")} value={selectedVariant?.variant_id ?? ""} onChange={(event) => setVariantId(event.target.value)}>{comparisonQuery.data?.variants.map((item) => <option value={item.variant_id} key={item.variant_id}>{item.market_hash_name}</option>)}</select></div><button type="button" onClick={() => { setSkinId(null); setVariantId(null); setSkinSearch(""); }}>{t("calculator.clearSkin")}</button></div> : <p className={styles.referenceHint}>{t("calculator.noReference")}</p>}
+      {skinQuery.data ? <div className={styles.selectedSkin}>
+        <div className={styles.referencePreview}>{skinQuery.data.image_url && <img src={skinQuery.data.image_url} alt="" width="160" height="128" />}</div>
+        <div className={styles.referenceCopy}><span>{t("calculator.marketReference")}</span><strong>{skinQuery.data.name}</strong>
+          <select name="skin-variant" aria-label={t("calculator.variant")} value={variantId ?? selectedVariant?.variant_id ?? ""} onChange={(event) => setVariantId(event.target.value)}>
+            {skinQuery.data.qualities.flatMap((quality) => quality.variants).map((item) => <option value={item.id} key={item.id}>{item.market_hash_name}</option>)}
+          </select>
+        </div>
+        <button className={styles.removeReference} type="button" onClick={() => { setSkinId(null); setVariantId(null); setSkinSearch(""); }}>{t("calculator.clearSkin")}</button>
+      </div> : <p className={styles.referenceHint}>{t("calculator.noReference")}</p>}
     </section>
 
     <form className={styles.calculatorGrid} onSubmit={submit}>
       <section className={styles.formPanel}>
         <div className={styles.priceGrid}>
           <label><span>{t("calculator.buyPrice")}, USD</span><input ref={buyPriceRef} name="buy-price" autoComplete="off" inputMode="decimal" value={buyPrice} onChange={(event) => setBuyPrice(event.target.value)} aria-invalid={buyCents == null} aria-describedby={buyCents == null ? "money-error" : undefined} /><small>{buyReference == null ? t("calculator.manual") : `${t("calculator.marketReference")}: ${formatUsd(buyReference, locale)}`}</small>{buyReference != null && <button type="button" onClick={() => useReference("buy")}>{t("calculator.useQuote", { price: formatUsd(buyReference, locale) })}</button>}</label>
-          <div className={styles.direction}>→</div>
+          <div className={styles.direction} aria-hidden="true">→</div>
           <label><span>{t("calculator.sellPrice")}, USD</span><input ref={sellPriceRef} name="sell-price" autoComplete="off" inputMode="decimal" value={sellPrice} onChange={(event) => setSellPrice(event.target.value)} aria-invalid={sellCents == null} aria-describedby={sellCents == null ? "money-error" : undefined} /><small>{sellReference == null ? t("calculator.manual") : `${t("calculator.marketReference")}: ${formatUsd(sellReference, locale)}`}</small>{sellReference != null && <button type="button" onClick={() => useReference("sell")}>{t("calculator.useQuote", { price: formatUsd(sellReference, locale) })}</button>}</label>
         </div>
         {(buyCents == null || sellCents == null) && <p className={styles.error} id="money-error">{t("calculator.invalidMoney")}</p>}
@@ -139,7 +152,7 @@ export function CalculatorPage() {
         <header><span>{t("calculator.result")}</span>{calculation.data && <strong className={calculation.data.profit_cents > 0 ? styles.resultPositive : calculation.data.profit_cents < 0 ? styles.resultNegative : ""}>{t(calculation.data.profit_cents > 0 ? "calculator.positive" : calculation.data.profit_cents < 0 ? "calculator.negative" : "calculator.neutral")}</strong>}</header>
         {calculation.data ? <div className={styles.resultBody}>
           <div className={styles.heroResult}><span>{t("calculator.netProfit")}</span><strong className={calculation.data.profit_cents >= 0 ? styles.resultPositive : styles.resultNegative}>{calculation.data.profit_cents > 0 ? "+" : ""}{formatUsd(calculation.data.profit_cents, locale)}</strong><small>{t("calculator.cashRoi")} · {calculation.data.effective_buy_cents === 0 ? "—" : `${calculation.data.cash_roi_percent}%`}</small></div>
-          <FlipRiskNotice level={riskLevel} score={sellLiquidity?.score} cashRoiPercent={calculation.data.cash_roi_percent} />
+          <FlipRiskNotice level={riskLevel} score={sellLiquidity?.score} cashRoiPercent={calculation.data.cash_roi_percent} sellMarketplace={sellMarket} dataStatus={sellLiquidity?.data_status} />
           <ResultRow label={t("calculator.effectiveBuy")} value={formatUsd(calculation.data.effective_buy_cents, locale)} /><ResultRow label={t("calculator.depositFee")} value={formatUsd(calculation.data.deposit_fee_cents, locale)} />
           <ResultRow label={t("calculator.effectivePayout")} value={formatUsd(calculation.data.effective_payout_cents, locale)} /><ResultRow label={t("calculator.sellFee")} value={formatUsd(calculation.data.sell_fee_cents, locale)} /><ResultRow label={t("calculator.withdrawFee")} value={formatUsd(calculation.data.withdraw_fee_cents, locale)} />
           <div className={styles.roiGrid}><ResultMetric label={t("calculator.grossProfit")} value={formatUsd(calculation.data.gross_profit_cents, locale)} note={`${t("calculator.grossRoi")} · ${calculation.data.buy_price_cents === 0 ? "—" : `${calculation.data.gross_roi_percent}%`}`} /><ResultMetric label={t("calculator.marketProfit")} value={formatUsd(calculation.data.market_profit_cents, locale)} note={`${t("calculator.marketRoi")} · ${calculation.data.buy_price_cents === 0 ? "—" : `${calculation.data.market_roi_percent}%`}`} /><ResultMetric label={t("calculator.breakEven")} value={formatUsd(calculation.data.break_even_sell_price_cents, locale)} /></div>

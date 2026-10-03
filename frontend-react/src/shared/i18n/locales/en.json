@@ -23,7 +23,11 @@
     "cautionTitle": "Moderate liquidity.",
     "cautionBody": "Selling at the listed price may take time.",
     "unknownTitle": "Sale risk is unknown.",
-    "unknownBody": "There is not enough fresh sales or bid data for this marketplace.",
+    "unknownBody": "A liquidity estimate needs a current ask, confirmed sales over the last 7 days and buy orders from the selling marketplace. A weekly chart alone does not confirm that executable bids are available. Check their freshness in analytics for the selected variant.",
+    "missing_ask": "The selling marketplace has no current ask for this variant. A weekly sales chart does not replace a current sale price.",
+    "missing_orders": "The selling marketplace has no usable buy orders for this variant. Weekly sales history alone cannot estimate the price and depth of an immediate sale.",
+    "missing_sales": "The selling marketplace has no usable confirmed sales sample for this variant over the last 7 days. Wiki Trade quotes are price history, not confirmed sales.",
+    "csMoneyUnavailableBody": "CS.MONEY does not provide confirmed sales history and buy orders for a liquidity estimate. Weekly history from other marketplaces or Wiki Trade quotes cannot replace these data; this does not mean the current CS.MONEY price is stale.",
     "askAssumption": "The {{roi}}% ROI assumes a sale at the shown price."
   },
   "profit": {

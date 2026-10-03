@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from backend.app import market_comparison
 from backend.app.market_comparison import compare_market_responses
@@ -34,6 +34,43 @@ def market_response(
             }
         ],
     }
+
+
+@pytest.mark.parametrize("mode", ["smart", "quick_flip"])
+def test_cached_comparison_never_requests_providers_or_authenticated_bids(monkeypatch, mode):
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("Cached comparison contacted a provider")
+
+    for name in ("get_csfloat_prices", "get_csgomarket_prices", "get_whitemarket_prices", "_load_quick_sell_prices"):
+        monkeypatch.setattr(market_comparison, name, forbidden)
+    monkeypatch.setattr(market_comparison, "get_csmoney_prices", lambda _id: market_response("CS.MONEY", 1500))
+    monkeypatch.setattr(market_comparison, "_cached_liquidity_signals", lambda *_args: {})
+
+    def saved(_skin_id, marketplace, _ttl):
+        return [{"id": "variant-1", "market_hash_name": "Redline (Field-Tested)"}], {
+            "variant-1": {"price_cents": 1000, "is_available": True, "item_url": "https://example.test/",
+                          "fetched_at": datetime.now(timezone.utc) - timedelta(seconds=10)}}, True
+
+    monkeypatch.setattr(market_comparison, "load_skin_cache", saved)
+    result = market_comparison.get_skin_market_comparison("skin-1", cached_only=True, profit_mode=mode)
+    assert result["variants"][0]["markets"]["csfloat"]["price_cents"] == 1000
+    assert not result["variants"][0]["markets"]["csfloat"]["stale"]
+    assert result["variants"][0]["cheapest_price_cents"] == 1000
+    if mode == "quick_flip":
+        assert result["variants"][0]["opportunities"] == []
+
+
+def test_cached_comparison_marks_old_prices_stale_and_excludes_them_from_roi(monkeypatch):
+    monkeypatch.setattr(market_comparison, "load_skin_cache", lambda *_args: (
+        [{"id": "variant-1", "market_hash_name": "Redline (Field-Tested)"}],
+        {"variant-1": {"price_cents": 500, "is_available": True, "item_url": "https://example.test/",
+                       "fetched_at": datetime.now(timezone.utc) - timedelta(hours=1)}}, False))
+    saved = market_comparison._cached_price_response("skin-1", "CSFloat")
+    assert saved["variants"][0]["listing"]["stale"]
+    result = compare_market_responses("skin-1", [saved, market_response("CS.MONEY", 1500)],
+        deposit_method="crypto", withdraw_method="crypto", use_deposit_fee=False)
+    assert result["variants"][0]["cheapest_marketplace"] == "csmoney"
+    assert result["variants"][0]["opportunities"] == []
 
 
 def test_compares_exact_variant_and_calculates_both_profit_directions():

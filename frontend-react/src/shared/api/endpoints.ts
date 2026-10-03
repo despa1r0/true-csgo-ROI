@@ -3,6 +3,7 @@ import type {
   CalculationRequest,
   CatalogueFilters,
   CatalogueSearchResult,
+  CachedMarketPrices,
   CsMoneyTextSearch,
   HealthResponse,
   BuyOrder,
@@ -29,11 +30,13 @@ export const api = {
     apiClient.get<CsMoneyTextSearch>(`/api/market/csmoney/search/${encodeURIComponent(requestId)}`, { signal }),
   skinDetails: (skinId: string, signal?: AbortSignal) =>
     apiClient.get<SkinDetails>(`/api/skins/${encodeURIComponent(skinId)}`, { signal }),
+  csMoneyPrices: (skinId: string, signal?: AbortSignal) =>
+    apiClient.get<CachedMarketPrices>(`/api/skins/${encodeURIComponent(skinId)}/market/csmoney`, { signal }),
   marketplaces: (signal?: AbortSignal) =>
     apiClient.get<MarketplaceOption[]>("/api/marketplaces", { signal }),
   marketComparison: (
     skinId: string,
-    params: { profit_mode: Exclude<CalculationRequest["profit_mode"], "custom">; deposit_method: string; withdraw_method: string; use_deposit_fee: boolean },
+    params: { profit_mode: Exclude<CalculationRequest["profit_mode"], "custom">; deposit_method: string; withdraw_method: string; use_deposit_fee: boolean; cached_only?: boolean },
     signal?: AbortSignal,
   ) => apiClient.get<MarketComparisonResponse>(`/api/skins/${encodeURIComponent(skinId)}/markets/compare`, { query: params, signal }),
   calculate: (request: CalculationRequest, signal?: AbortSignal) =>

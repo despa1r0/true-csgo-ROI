@@ -23,6 +23,9 @@ class Page:
     def is_closed(self):
         return self.closed
 
+    def close(self):
+        self.closed = True
+
     def goto(self, *_args, **_kwargs):
         if self.failure is not None and self.failure_stage == "goto":
             raise self.failure
@@ -69,6 +72,10 @@ class Clock:
 class Browser:
     def __init__(self, page=None, *, connected=True, new_page_error=None):
         self.page = page or Page()
+        self.page.context = SimpleNamespace(
+            new_page=lambda: Page(failure=self.page.failure, failure_stage=self.page.failure_stage),
+            route=lambda *_args: None,
+        )
         self.connected = connected
         self.new_page_error = new_page_error
         self.exited = False
@@ -79,13 +86,19 @@ class Browser:
     def __exit__(self, *_args):
         self.exited = True
 
-    def new_page(self):
+    def _context_page(self):
         if self.new_page_error:
             raise self.new_page_error
         return self.page
 
+    def new_page(self, **_kwargs):
+        raise AssertionError("Use an explicit context: browser.new_page() cannot own additional tabs")
+
     def is_connected(self):
         return self.connected
+
+    def new_context(self, **_kwargs):
+        return SimpleNamespace(new_page=self._context_page, route=lambda *_args: None)
 
 
 @pytest.fixture
@@ -202,6 +215,9 @@ def test_session_rotation_keeps_processing_on_a_new_browser(monkeypatch, runtime
     assert len(browsers) == 2
     assert pages == [browser.page for browser in browsers]
     assert all(browser.exited for browser in browsers)
+    if rotation == "memory":
+        # Only the normal request interval applies; planned rotation adds no recovery pause.
+        assert runtime.now == 1010.0
 
 
 def test_memory_pressure_without_progress_exits_instead_of_launching_forever(monkeypatch, runtime):
@@ -287,7 +303,7 @@ def test_search_is_retried_in_new_session_and_finishes_successfully(monkeypatch,
             SimpleNamespace(failed=False, close=lambda: actions.append("close_second"))]
     browsers = [Browser(), Browser()]
     for browser, tab in zip(browsers, tabs):
-        browser.page.context = SimpleNamespace(new_page=lambda tab=tab: tab)
+        browser.page.context = SimpleNamespace(new_page=lambda tab=tab: tab, route=lambda *_args: None)
     pending = iter(browsers)
     monkeypatch.setattr(worker, "_new_browser", lambda: next(pending))
     monkeypatch.setattr(worker, "claim_search", lambda: {"request_id": request_id, "query": "Redline"})
@@ -310,6 +326,10 @@ def test_search_is_retried_in_new_session_and_finishes_successfully(monkeypatch,
     ({"memory.current": "1234"}, 1234),
     ({"memory.usage_in_bytes": "2345"}, 2345),
     ({"memory.current": "invalid", "memory.usage_in_bytes": "3456"}, 3456),
+    ({"memory.current": "2000", "memory.stat": "inactive_file 1200\nanon 700\n"}, 800),
+    ({"memory.usage_in_bytes": "2000", "memory.stat": "total_inactive_file 1100\n"}, 900),
+    ({"memory.current": "2000", "memory.stat": "invalid stat line"}, 2000),
+    ({"memory.current": "2000", "memory.stat": "inactive_file 3000\n"}, 0),
     ({"memory.current": "-1"}, None),
     ({}, None),
 ])
@@ -349,3 +369,41 @@ def test_browser_retry_preserves_priority_attempt_budget_and_search_expiry(monke
     assert "expires_at =" not in search_sql
     assert "status = 'running'" in search_sql
     assert search_params == (10, request_id)
+
+
+@pytest.mark.parametrize("error", [None, CsMoneyBlockedError("403"), CsMoneyBrowserError(CLOSED)])
+def test_catalogue_capture_uses_new_tab_and_always_closes_it(monkeypatch, error):
+    actions = []
+    tab = SimpleNamespace(close=lambda: actions.append("close"))
+    anchor = SimpleNamespace(context=SimpleNamespace(new_page=lambda: actions.append("new_page") or tab))
+
+    def capture(page, name, *, phase):
+        assert page is tab
+        assert name == "Redline" and phase is None
+        actions.append("capture")
+        if error:
+            raise error
+        return {"listings": []}
+
+    monkeypatch.setattr(worker, "capture_variant", capture)
+    if error:
+        with pytest.raises(type(error)):
+            worker._capture_variant_in_tab(anchor, "Redline", phase=None)
+    else:
+        assert worker._capture_variant_in_tab(anchor, "Redline", phase=None) == {"listings": []}
+    assert actions == ["new_page", "capture", "close"]
+
+
+@pytest.mark.parametrize("resource,blocked", [
+    ("image", True), ("media", True), ("font", True),
+    ("document", False), ("script", False), ("stylesheet", False), ("xhr", False), ("fetch", False),
+])
+def test_collection_routing_blocks_only_decorative_resources(resource, blocked):
+    handlers = []
+    context = SimpleNamespace(route=lambda pattern, handler: handlers.append(handler))
+    worker._configure_collection_context(context)
+    actions = []
+    route = SimpleNamespace(request=SimpleNamespace(resource_type=resource),
+                            abort=lambda: actions.append("abort"), continue_=lambda: actions.append("continue"))
+    handlers[0](route)
+    assert actions == ["abort" if blocked else "continue"]

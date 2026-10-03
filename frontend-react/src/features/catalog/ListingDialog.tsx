@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 
 import { api, type DetailComponentName, type Listing, type ListingFilters, type ListingsResponse, type MarketSourceState, type MarketplaceDetails, type MarketplaceOption, type ProfitMode, type Sale, type SellMode, type SkinDetails, type SkinQuality, type VariantComparison, type VariantKind, type SkinVariant, type WikiPriceHistory } from "@/shared/api";
 import { formatDate, formatNumber, formatUsd } from "@/shared/lib/format";
+import { detailParams, useBrowseHistory, useBrowseScroll } from "@/shared/lib/browseHistory";
 import type { HistoryPeriod } from "@/features/analytics/SalesChart";
 import styles from "./market.module.css";
 import { FlipRiskNotice } from "./FlipRiskNotice";
@@ -31,6 +32,17 @@ const detailStatusLabels = {
   unavailable: "analytics.dataUnavailable",
 } as const;
 
+function browseFilters(params: URLSearchParams, wear: string): ListingFilters {
+  const number = (key: string) => params.get(key) ? Number(params.get(key)!.replace(",", ".")) : undefined;
+  const minPrice = number("min_price"), maxPrice = number("max_price");
+  return { wear: wearSlugs[wear], sort_by: params.get("sort") === "best_deal" ? "best_deal" : "lowest_price",
+    variant: (["normal", "stattrak", "souvenir"] as VariantKind[]).find((item) => item === params.get("kind")) ?? "any",
+    min_float: number("min_float"), max_float: number("max_float"),
+    min_price_cents: minPrice == null ? undefined : Math.round(minPrice * 100),
+    max_price_cents: maxPrice == null ? undefined : Math.round(maxPrice * 100),
+    has_stickers: params.get("stickers") === "1", has_charm: params.get("charm") === "1", limit: 30 };
+}
+
 type Props = {
   skin: SkinDetails;
   quality: SkinQuality;
@@ -42,8 +54,10 @@ type Props = {
 
 export function ListingDialog({ skin, quality, marketplaces, comparison, open, onOpenChange }: Props) {
   const { i18n, t } = useTranslation();
+  const { params, location, update, back } = useBrowseHistory();
+  const listScroll = useBrowseScroll();
   const listMarkets = marketplaces.filter((item) => item.capabilities.supports_listings);
-  const [marketId, setMarketId] = useState(listMarkets[0]?.id ?? "csfloat");
+  const marketId = params.get("listing_market") ?? listMarkets[0]?.id ?? "csfloat";
   const [sort, setSort] = useState<ListingFilters["sort_by"]>("lowest_price");
   const [variant, setVariant] = useState<VariantKind>("any");
   const [minFloat, setMinFloat] = useState("");
@@ -52,16 +66,18 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
   const [maxPrice, setMaxPrice] = useState("");
   const [hasStickers, setHasStickers] = useState(false);
   const [hasCharm, setHasCharm] = useState(false);
-  const [appliedFilters, setAppliedFilters] = useState<ListingFilters>({ wear: wearSlugs[quality.wear], sort_by: "lowest_price", variant: "any", has_stickers: false, has_charm: false, limit: 30 });
-  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<SkinVariant | null>(null);
-  const detailVariantId = selectedListing?.variant_id ?? selectedVariant?.id;
-  const [selectedListingStale, setSelectedListingStale] = useState(false);
-  const [tab, setTab] = useState<Tab>("history");
-  const [analyticsMarket, setAnalyticsMarket] = useState(marketId);
-  const [period, setPeriod] = useState<HistoryPeriod>("7d");
-  const [compareBuy, setCompareBuy] = useState(listMarkets[0]?.id ?? "csfloat");
-  const [compareSell, setCompareSell] = useState(listMarkets[1]?.id ?? listMarkets[0]?.id ?? "csgomarket");
+  const [appliedFilters, setAppliedFilters] = useState<ListingFilters>(() => browseFilters(params, quality.wear));
+  const detailVariantId = params.get("detail_variant") ?? undefined;
+  const tab: Tab = analyticsTabs.find((item) => item === params.get("tab")) ?? "history";
+  function setTab(value: Tab) { update({ tab: value }, true); }
+  const analyticsMarket = params.get("analytics_market") ?? marketId;
+  function setAnalyticsMarket(value: string) { update({ analytics_market: value }, true); }
+  const period = (["24h", "7d", "14d", "all"] as HistoryPeriod[]).find((item) => item === params.get("period")) ?? "7d";
+  function setPeriod(value: HistoryPeriod) { update({ period: value }, true); }
+  const compareBuy = params.get("compare_buy") ?? listMarkets[0]?.id ?? "csfloat";
+  const compareSell = params.get("compare_sell") ?? listMarkets[1]?.id ?? listMarkets[0]?.id ?? "csgomarket";
+  function setCompareBuy(value: string) { update({ compare_buy: value }, true); }
+  function setCompareSell(value: string) { update({ compare_sell: value }, true); }
   const market = marketplaces.find((item) => item.id === marketId);
   const listingMarkets = marketId === ALL_MARKETS ? listMarkets : listMarkets.filter((item) => item.id === marketId);
   const canSortBestDeal = listingMarkets.some((item) => item.capabilities.supports_best_deal_sort);
@@ -88,12 +104,21 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
     };
   }) });
   const visibleListingCount = listingQueries.reduce((count, query) => count + (query.data?.listings.length ?? 0), 0);
+  const rememberedListing = location.state?.selectedListing as Listing | undefined;
+  const listingId = params.get("listing");
+  const selectedListing = listingId ? (rememberedListing?.listing_id === listingId && rememberedListing.variant_id === detailVariantId
+    ? rememberedListing : listingQueries.flatMap((query, index) => (query.data?.listings ?? [])
+      .map((listing) => ({ ...listing, marketplace_id: listing.marketplace_id ?? listingMarkets[index]?.id })))
+      .find((listing) => listing.listing_id === listingId && listing.variant_id === detailVariantId)) ?? null : null;
+  const selectedVariant = detailVariantId ? quality.variants.find((item) => item.id === detailVariantId) ?? null : null;
+  const selectedListingStale = Boolean(selectedListing && (selectedListing.stale || location.state?.listingSnapshotStale));
 
   const analyticsMarkets = listMarkets;
   const detailQueries = useQueries({ queries: analyticsMarkets.map((item) => ({
     queryKey: ["variant-details", detailVariantId, item.id],
     queryFn: ({ signal }: { signal: AbortSignal }) => api.variantDetails(detailVariantId!, item.id, signal),
     enabled: Boolean(detailVariantId && (item.id === analyticsMarket || tab === "compare")), staleTime: 0,
+    refetchInterval: item.id === "csmoney" ? (query: { state: { data?: MarketplaceDetails } }) => query.state.data?.refresh_queued ? 5_000 : 60_000 : false,
   })) });
   const detailsByMarket = useMemo(() => new Map<string, MarketplaceDetails>(detailQueries.map((query, index) => [analyticsMarkets[index]?.id ?? "", query.data]).filter((entry): entry is [string, MarketplaceDetails] => Boolean(entry[0] && entry[1]))), [analyticsMarkets, detailQueries]);
   const listingQuickSellQuery = useQuery({
@@ -108,11 +133,32 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
   const selectedDetailQuery = detailQueries[analyticsMarkets.findIndex((item) => item.id === analyticsMarket)];
   const activeTabIndex = analyticsTabs.indexOf(tab);
 
-  function resetFilters() { setVariant("any"); setMinFloat(""); setMaxFloat(""); setMinPrice(""); setMaxPrice(""); setHasStickers(false); setHasCharm(false); setAppliedFilters({ wear: wearSlugs[quality.wear], sort_by: "lowest_price", variant: "any", has_stickers: false, has_charm: false, limit: 30 }); }
-  function applyFilters() { setAppliedFilters(listingFilters); }
-  function openDetail(listing: Listing, marketplaceId: string, snapshot?: ListingsResponse) { setSelectedVariant(null); setSelectedListing({ ...listing, marketplace_id: listing.marketplace_id ?? marketplaceId }); setSelectedListingStale(selectedListingIsStale(listing, snapshot)); setAnalyticsMarket(listing.marketplace_id ?? marketplaceId); setTab("history"); }
-  function openVariant(next: SkinVariant) { setSelectedListing(null); setSelectedVariant(next); setAnalyticsMarket("csmoney"); setTab("history"); }
-  function switchMarket(next: string) { setMarketId(next); if (next !== ALL_MARKETS) setAnalyticsMarket(next); }
+  const filterState = ["sort", "kind", "min_float", "max_float", "min_price", "max_price", "stickers", "charm"].map((key) => params.get(key) ?? "").join("|");
+  useEffect(() => {
+    const restoredSort = params.get("sort") === "best_deal" ? "best_deal" : "lowest_price";
+    const restoredVariant = (["normal", "stattrak", "souvenir"] as VariantKind[]).find((item) => item === params.get("kind")) ?? "any";
+    const lowFloat = params.get("min_float") ?? "", highFloat = params.get("max_float") ?? "";
+    const lowPrice = params.get("min_price") ?? "", highPrice = params.get("max_price") ?? "";
+    const stickers = params.get("stickers") === "1", charm = params.get("charm") === "1";
+    setSort(restoredSort); setVariant(restoredVariant); setMinFloat(lowFloat); setMaxFloat(highFloat);
+    setMinPrice(lowPrice); setMaxPrice(highPrice); setHasStickers(stickers); setHasCharm(charm);
+    setAppliedFilters(browseFilters(params, quality.wear));
+  }, [filterState, quality.wear]);
+  function resetFilters() { update({ sort: null, kind: null, min_float: null, max_float: null,
+    min_price: null, max_price: null, stickers: null, charm: null }, true); }
+  function applyFilters() {
+    setAppliedFilters(listingFilters);
+    update({ sort: sort ?? "lowest_price", kind: variant, min_float: minFloat, max_float: maxFloat,
+      min_price: minPrice, max_price: maxPrice, stickers: hasStickers ? "1" : null, charm: hasCharm ? "1" : null }, true);
+  }
+  function openDetail(listing: Listing, marketplaceId: string, snapshot?: ListingsResponse) {
+    const market = listing.marketplace_id ?? marketplaceId;
+    update({ detail_variant: listing.variant_id ?? quality.variants.find((item) => item.market_hash_name === listing.market_hash_name)?.id ?? null,
+      listing: listing.listing_id ?? null, analytics_market: market, tab: "history" }, false,
+      { selectedListing: { ...listing, marketplace_id: market }, listingSnapshotStale: selectedListingIsStale(listing, snapshot) });
+  }
+  function openVariant(next: SkinVariant) { update({ detail_variant: next.id, listing: null, analytics_market: "csmoney", tab: "history" }); }
+  function switchMarket(next: string) { update({ listing_market: next, ...(next !== ALL_MARKETS ? { analytics_market: next } : {}) }, true); }
   const currentSales = selectedDetails?.sales ?? [];
   const visibleSales = useMemo(() => filterSalesByPeriod(currentSales, period), [currentSales, period]);
   const freshListings = selectedDetails && detailComponentFresh(selectedDetails, "listings") ? selectedDetails : undefined;
@@ -123,13 +169,15 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
     : freshBuyOrders?.quick_sell;
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(next) => {
+      if (!next && detailVariantId) back(detailParams); else onOpenChange(next);
+    }}>
       <Dialog.Portal>
         <Dialog.Overlay className={styles.dialogOverlay} />
         <Dialog.Content className={styles.dialogContent} aria-describedby={undefined}>
           <Dialog.Close className={styles.dialogClose} aria-label={t("common.close")}>×</Dialog.Close>
           {!selectedListing && !selectedVariant ? (
-            <div className={styles.browserView}>
+            <div className={styles.browserView} ref={listScroll.ref} onScroll={listScroll.onScroll}>
               <header className={styles.dialogHeader}><div><span>{t("listings.title")}</span><Dialog.Title>{skin.name}</Dialog.Title><p>{marketId === ALL_MARKETS ? t("listings.subtitleAll", { wear: quality.wear }) : t("listings.subtitle", { wear: quality.wear, market: market?.display_name ?? marketId })}</p></div><strong>{t("listings.count", { count: visibleListingCount })}</strong></header>
               <section className={styles.listingToolbar}>
                 <label><span>{t("listings.marketplace")}</span><select name="listing-marketplace" value={marketId} onChange={(event) => switchMarket(event.target.value)}><option value={ALL_MARKETS}>{t("listings.allMarketplaces")}</option>{listMarkets.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label>
@@ -165,7 +213,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
           ) : (
             <div className={styles.detailView}>
               <aside className={styles.detailAside}>
-                <button className={styles.backButton} type="button" onClick={() => { setSelectedListing(null); setSelectedVariant(null); }}>← {t("analytics.backToListings")}</button>
+                <button className={styles.backButton} type="button" onClick={() => back(detailParams)}>← {t("analytics.backToListings")}</button>
                 <span className={styles.eyebrow}>{t(selectedListing ? "analytics.selectedListing" : "analytics.selectedVariant")}</span><Dialog.Title>{selectedListing?.market_hash_name ?? selectedVariant?.market_hash_name}</Dialog.Title>
                 <div className={styles.detailImage}><img src={selectedListing?.image_url ?? selectedVariant?.image_url ?? skin.image_url ?? ""} alt="" width="400" height="224" /></div>
                 {selectedListing && <><strong className={styles.detailPrice}>{formatUsd(selectedListing.price_cents, locale)}</strong>
@@ -217,7 +265,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
                 </section>}
                 {tab === "active" && <section className={styles.analyticsSection}><div className={styles.metricGrid}><Metric label={t("analytics.minPrice")} value={formatUsd(selectedDetails?.overview?.price_cents, locale)} /><Metric label={t("listings.title")} value={String(activeListingCount(freshListings) ?? "—")} /></div><DataTable headers={[t("analytics.price"), "Float", "Seed", t("analytics.attachments")]} rows={(freshListings?.listings ?? []).map((item) => [formatUsd(item.price_cents, locale), item.float_value?.toFixed(8) ?? "—", String(item.paint_seed ?? "—"), <AttachmentPreview listing={item} compact locale={locale} />])} /></section>}
                 {tab === "quick" && <section className={styles.analyticsSection}>{!selectedCapability?.supports_quick_sell ? <div className={styles.emptyState}>{t("analytics.quickUnavailable")}</div> : <><div className={styles.metricGrid}><Metric label={t("analytics.bestBid")} value={formatUsd(selectedQuickSell?.best_price_cents, locale)} /><Metric label={t("analytics.bidDepth")} value={String(selectedQuickSell?.near_bid_depth ?? "—")} /></div>{listingQuickSellQuery.isLoading && analyticsMarket === "csfloat" && <p className={styles.sourceNote}>{t("common.loading")}</p>}<DataTable headers={[t("analytics.price"), t("analytics.quantity"), t("analytics.conditions")]} rows={(selectedQuickSell?.orders ?? []).map((order) => [formatUsd(order.price_cents, locale), String(order.quantity), order.min_float == null && order.max_float == null ? "—" : `${order.min_float ?? 0}–${order.max_float ?? 1}`])} /><p className={styles.sourceNote}>{selectedQuickSell?.note}</p></>}</section>}
-                {tab === "compare" && <ComparePanel marketplaces={analyticsMarkets} details={detailsByMarket} comparison={selectedComparison} selectedListing={selectedListing} fallbackImage={selectedVariant?.image_url ?? skin.image_url} selectedListingStale={selectedListingStale} listingQuickSell={listingQuickSellQuery.data} buy={compareBuy} sell={compareSell} onBuy={setCompareBuy} onSell={setCompareSell} onSwap={() => { setCompareBuy(compareSell); setCompareSell(compareBuy); }} locale={locale} />}
+                {tab === "compare" && <ComparePanel marketplaces={analyticsMarkets} details={detailsByMarket} comparison={selectedComparison} selectedListing={selectedListing} fallbackImage={selectedVariant?.image_url ?? skin.image_url} selectedListingStale={selectedListingStale} listingQuickSell={listingQuickSellQuery.data} buy={compareBuy} sell={compareSell} onBuy={setCompareBuy} onSell={setCompareSell} onSwap={() => update({ compare_buy: compareSell, compare_sell: compareBuy }, true)} locale={locale} />}
                 </div>}
               </main>
             </div>
@@ -443,7 +491,7 @@ function ComparePanel({ marketplaces, details, comparison, selectedListing, fall
       <ComparisonPreview title={t("analytics.sellPreview")} marketplace={sellConfig?.display_name ?? sell} listing={sellPreview} fallbackImage={selectedListing?.image_url ?? fallbackImage} price={sellQuote} locale={locale} />
     </div>
     <div className={styles.metricGrid}><Metric label={`${t("analytics.buy")} · ask`} value={formatUsd(buyQuote, locale)} /><Metric label={effectiveSellMode === "fast_buy" ? `${t("analytics.sell")} · bid` : `${t("analytics.sell")} · ask`} value={formatUsd(sellQuote, locale)} /><Metric label={t("analytics.bidDepth")} value={String(freshDetails(sell, "buy_orders")?.quick_sell?.near_bid_depth ?? "—")} /><Metric label={t("analytics.netProfit")} value={formatUsd(result?.profit_cents, locale)} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /><Metric label={t("analytics.roi")} value={result ? (result.effective_buy_cents === 0 ? "—" : `${result.cash_roi_percent}%`) : "—"} tone={result ? (result.profit_cents >= 0 ? "positive" : "negative") : undefined} /></div>
-    <FlipRiskNotice level={riskLevel} score={sellScore} cashRoiPercent={result?.cash_roi_percent} />
+    <FlipRiskNotice level={riskLevel} score={sellScore} cashRoiPercent={result?.cash_roi_percent} sellMarketplace={sell} dataStatus={sellDetail?.stats?.liquidity_data_status ?? comparedSale?.sell_liquidity?.data_status} />
     <QuoteProvenance buy={buyAsk.source} sell={sellQuote == null ? null : effectiveSellMode === "fast_buy" ? "best_bid" : sellAsk.source} />
     {result?.applied_fees && <div className={styles.feeBreakdown}><Metric label={t("calculator.depositFee")} value={formatUsd(result.deposit_fee_cents, locale)} /><Metric label={t("calculator.sellFee")} value={formatUsd(result.sell_fee_cents, locale)} /><Metric label={t("calculator.withdrawFee")} value={formatUsd(result.withdraw_fee_cents, locale)} /></div>}
     {!supportsSelectedSale && <p className={styles.sourceNote}>{t("analytics.quickUnavailable")}</p>}

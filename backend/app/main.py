@@ -97,6 +97,7 @@ def skin_market_comparison(
     deposit_method: Literal["card", "crypto"] = "crypto",
     withdraw_method: Literal["card", "crypto"] = "crypto",
     use_deposit_fee: bool = True,
+    cached_only: bool = False,
 ):
     if get_skin(skin_id) is None:
         raise HTTPException(status_code=404, detail="Скин не найден")
@@ -106,6 +107,7 @@ def skin_market_comparison(
         withdraw_method=withdraw_method,
         use_deposit_fee=use_deposit_fee,
         profit_mode=profit_mode,
+        cached_only=cached_only,
     )
 
 

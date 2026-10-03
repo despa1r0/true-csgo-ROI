@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, ScrollRestoration, useLocation } from "react-router-dom";
 
 import { api } from "@/shared/api";
 import { Button } from "@/shared/ui";
@@ -68,6 +68,7 @@ export function AppShell() {
         </div>
       </main>
       <footer className={styles.footer}><span translate="no">trueROI</span><span>{t("app.footer")}</span></footer>
+      <ScrollRestoration />
     </div>
   );
 }

@@ -16,6 +16,7 @@ from .csgomarket_data import (
 )
 from .csmoney_data import get_csmoney_prices
 from .database import get_connection
+from .repositories.market_prices import load_skin_cache
 from .analytics.liquidity import calculate_liquidity
 from .services.market_data import (
     get_csfloat_prices,
@@ -35,6 +36,31 @@ MARKET_RESPONSE_KEYS = {
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
 LOG = logging.getLogger(__name__)
+
+
+def _cached_price_response(skin_id: str, marketplace: str) -> dict[str, Any]:
+    """Read saved asks without provider requests, authentication probes or cache writes."""
+    prefix = {"CSFloat": "CSFLOAT", "CSGO Market": "CSGOMARKET", "WhiteMarket": "WHITEMARKET"}[marketplace]
+    try:
+        ttl = max(1, int(os.getenv(f"{prefix}_CACHE_TTL_SECONDS", "300")))
+    except ValueError:
+        ttl = 300
+    variants, rows, _ = load_skin_cache(skin_id, marketplace, ttl)
+    now = datetime.now(timezone.utc)
+    results = []
+    for variant in variants:
+        row = rows.get(variant["id"])
+        listing = None
+        if row and row["is_available"]:
+            fetched = row.get("fetched_at")
+            if fetched and fetched.tzinfo is None:
+                fetched = fetched.replace(tzinfo=timezone.utc)
+            listing = {key: row.get(key) for key in (
+                "listing_id", "price_cents", "item_url", "float_value", "quantity", "fetched_at")}
+            listing.update(marketplace=marketplace, stale=not fetched or fetched < now - timedelta(seconds=ttl),
+                           source="listing" if row.get("listing_id") else "index")
+        results.append({"variant_id": variant["id"], "market_hash_name": variant["market_hash_name"], "listing": listing})
+    return {"marketplace": marketplace, "cache_ttl_seconds": ttl, "variants": results}
 
 
 def _fast_buy_function(marketplace: str):
@@ -57,6 +83,7 @@ def get_skin_market_comparison(
     withdraw_method: str = "crypto",
     use_deposit_fee: bool = True,
     profit_mode: str = "smart",
+    cached_only: bool = False,
 ) -> dict[str, Any]:
     """Load all cached indexes concurrently and compare every exact variant."""
     readers = [
@@ -65,6 +92,9 @@ def get_skin_market_comparison(
         ("WhiteMarket", get_whitemarket_prices),
         ("CS.MONEY", get_csmoney_prices),
     ]
+    if cached_only:
+        readers = [(name, lambda item_id, name=name: _cached_price_response(item_id, name))
+                   for name, _ in readers if name != "CS.MONEY"] + [("CS.MONEY", get_csmoney_prices)]
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [(name, executor.submit(reader, skin_id)) for name, reader in readers]
         market_responses = []
@@ -82,7 +112,7 @@ def get_skin_market_comparison(
                 })
     quick_sell_prices = (
         _load_quick_sell_prices(market_responses)
-        if profit_mode == "quick_flip"
+        if profit_mode == "quick_flip" and not cached_only
         else None
     )
     liquidity_signals = _cached_liquidity_signals(skin_id, market_responses)

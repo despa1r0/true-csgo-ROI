@@ -1,10 +1,14 @@
 import logging
+from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
 
 import pytest
 
 from backend.app import csmoney_worker
 from backend.app.marketplaces.csmoney import CsMoneyRequestError
+
+
+PAGE = SimpleNamespace(context=SimpleNamespace(new_page=lambda: SimpleNamespace(close=lambda: None)))
 
 
 def test_storefront_403_uses_exact_wiki_summary_and_trips_circuit(monkeypatch):
@@ -30,7 +34,7 @@ def test_storefront_403_uses_exact_wiki_summary_and_trips_circuit(monkeypatch):
     ))
 
     with pytest.raises(CsMoneyRequestError, match="403"):
-        csmoney_worker.process_one(object())
+        csmoney_worker.process_one(PAGE)
 
     assert actions[0][0] == ("redline_ft", {"price_cents": 2578, "quantity": 1519})
     assert actions[1] == ("complete", "redline_ft")
@@ -55,7 +59,7 @@ def test_wiki_only_mode_does_not_access_storefront(monkeypatch):
     assert csmoney_worker.process_one(None)
 
 
-@pytest.mark.parametrize("page", [None, object()])
+@pytest.mark.parametrize("page", [None, PAGE])
 def test_wiki_success_is_visible_at_info(monkeypatch, caplog, page):
     monkeypatch.setattr(csmoney_worker, "claim_refresh_job", lambda: {
         "variant_id": "redline_ft", "attempts": 1,
@@ -82,7 +86,7 @@ def test_wiki_success_is_visible_at_info(monkeypatch, caplog, page):
     assert "source=wiki_market_summary result=ok price_cents=2578 count=1519" in caplog.text
 
 
-@pytest.mark.parametrize("page", [None, object()])
+@pytest.mark.parametrize("page", [None, PAGE])
 @pytest.mark.parametrize("error,expected", [
     (HTTPError("https://example.com/?token=SECRET", 403, "SECRET", {"Cookie": "SECRET"}, None),
      "http_403_challenge"),

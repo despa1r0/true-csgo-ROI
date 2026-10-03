@@ -1,8 +1,8 @@
 """Read the price-sorted CS.MONEY storefront for an exact market variant.
 
-The site's interactive sell-orders endpoint currently returns 403. Initial
-HTML responses still embed inventory.items; this adapter reads that public
-payload and never bypasses a security challenge.
+Initial HTML responses embed inventory.items; this adapter reads that public
+payload rather than relying on the interactive sell-orders endpoint. Security
+challenges and HTTP 403/429 stop collection instead of being bypassed.
 """
 
 from __future__ import annotations

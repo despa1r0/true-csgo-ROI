@@ -1,134 +1,150 @@
-.page { display: grid; gap: 1.25rem; }.hero { padding: 1rem 0 1.2rem; }.hero > span, .resultPanel header > span { color: var(--color-accent-hover); font-size: .7rem; font-weight: 800; letter-spacing: .15em; }.hero h1 { margin: .45rem 0; font-size: clamp(2.4rem, 6vw, 4.8rem); letter-spacing: -.065em; }.hero p { max-width: 44rem; margin: 0; color: var(--color-text-secondary); line-height: 1.6; }
-.skinReference, .formPanel, .resultPanel { border: 1px solid var(--color-border-subtle); border-radius: 1rem; background: var(--color-surface); }.skinReference { min-height: 5.5rem; display: grid; grid-template-columns: minmax(18rem, 1fr) 2fr; gap: 1rem; align-items: center; padding: 1rem; }.searchWrap { position: relative; display: grid; gap: .35rem; }.searchWrap > label, .priceGrid label > span, .marketGrid label > span, .optionsGrid label > span { color: var(--color-text-muted); font-size: .67rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }.searchWrap > input, .priceGrid input, .marketGrid select, .optionsGrid select, .selectedSkin select { width: 100%; height: 2.8rem; padding: 0 .8rem; border: 1px solid var(--color-border-strong); border-radius: .6rem; outline: none; background: var(--color-background); color: var(--color-text-primary); }.searchWrap input:focus, .priceGrid input:focus { border-color: var(--color-accent-primary); box-shadow: var(--shadow-focus); }.suggestions { position: absolute; z-index: 5; top: 100%; width: 100%; padding: .35rem; border: 1px solid var(--color-border-strong); border-radius: .7rem; background: #0d0f15; box-shadow: var(--shadow-raised); }.suggestions button { width: 100%; display: flex; align-items: center; gap: .6rem; padding: .5rem; border: 0; border-radius: .5rem; background: none; color: inherit; text-align: left; }.suggestions button:hover { background: var(--color-surface-hover); }.suggestions img { width: 3.5rem; height: 2.5rem; object-fit: contain; }.suggestions span { display: grid; }.suggestions small { color: var(--color-text-muted); }.selectedSkin { display: grid; grid-template-columns: 5rem 1fr auto; align-items: center; gap: .8rem; }.selectedSkin img { width: 5rem; height: 4rem; object-fit: contain; }.selectedSkin > div { display: grid; gap: .25rem; }.selectedSkin span { color: var(--color-accent-cyan); font-size: .65rem; font-weight: 800; }.selectedSkin button { border: 0; background: none; color: var(--color-text-muted); cursor: pointer; }.referenceHint { color: var(--color-text-muted); }
-.calculatorGrid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(20rem, .65fr); gap: 1rem; }.formPanel { display: grid; gap: 1.2rem; padding: clamp(1rem, 3vw, 2rem); }.priceGrid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .8rem; }.priceGrid label { display: grid; gap: .45rem; }.priceGrid input { height: 4.2rem; font-size: 1.7rem; font-weight: 750; letter-spacing: -.04em; }.priceGrid input[aria-invalid="true"] { border-color: var(--color-negative); }.priceGrid small { color: var(--color-text-muted); }.priceGrid button { width: max-content; padding: 0; border: 0; background: none; color: var(--color-accent-cyan); font-size: .72rem; cursor: pointer; }.direction { color: var(--color-accent-hover); font-size: 1.5rem; }.savings, .error { margin: 0; padding: .7rem .85rem; border-left: 2px solid var(--color-positive); background: rgb(52 211 153 / 5%); color: var(--color-positive); font-size: .8rem; }.error { border-color: var(--color-negative); color: var(--color-negative); background: rgb(251 113 133 / 5%); }
-.marketGrid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: .7rem; }.marketGrid label, .optionsGrid label { display: grid; gap: .35rem; }.swap { width: 2.8rem; height: 2.8rem; border: 1px solid var(--color-border-strong); border-radius: .6rem; background: var(--color-accent-muted); color: var(--color-accent-hover); cursor: pointer; }.optionsGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; }.fees { display: grid; gap: .45rem; margin: 0; padding: 1rem; border: 1px solid var(--color-border-subtle); border-radius: .7rem; }.fees legend { padding: 0 .4rem; font-weight: 750; }.fees > p { margin: 0 0 .35rem; color: var(--color-text-muted); font-size: .72rem; }.fees label { display: grid; grid-template-columns: auto 1fr auto; gap: .7rem; align-items: center; min-height: 2.4rem; padding: 0 .6rem; border-radius: .45rem; background: var(--color-background); }.fees input { accent-color: var(--color-accent-primary); }.fees label:has(input:disabled) { opacity: .65; }.fees strong { color: var(--color-accent-hover); font-size: .76rem; }.submit { min-height: 3rem; border: 1px solid var(--color-accent-primary); border-radius: .65rem; background: var(--color-accent-primary); color: white; font-weight: 800; cursor: pointer; }.submit:hover { background: var(--color-accent-hover); }.submit:disabled { opacity: .55; cursor: wait; }
-.resultPanel { min-width: 0; overflow: hidden; }.resultPanel > header { min-height: 4rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: 1rem; border-bottom: 1px solid var(--color-border-subtle); }.resultPanel header strong { font-size: .72rem; }.resultBody { display: grid; gap: 0; padding: 1rem; }.heroResult { display: grid; gap: .3rem; padding: 1.1rem; margin-bottom: .7rem; border: 1px solid var(--color-border-subtle); border-radius: .7rem; background: var(--color-background); }.heroResult span, .resultRow span, .roiGrid span { color: var(--color-text-muted); font-size: .7rem; text-transform: uppercase; }.heroResult strong { font-size: 2.2rem; letter-spacing: -.05em; }.heroResult small, .roiGrid small { color: var(--color-text-muted); }.resultPositive { color: var(--color-positive); }.resultNegative { color: var(--color-negative); }.resultRow { display: flex; justify-content: space-between; gap: 1rem; padding: .65rem .2rem; border-bottom: 1px solid var(--color-border-subtle); }.roiGrid { display: grid; grid-template-columns: 1fr; gap: .5rem; margin-top: 1rem; }.roiGrid > div { display: grid; gap: .25rem; padding: .75rem; border-radius: .55rem; background: var(--color-surface-raised); }.resultPlaceholder { min-height: 25rem; display: grid; align-content: center; justify-items: center; padding: 2rem; text-align: center; }.resultPlaceholder span { color: var(--color-accent-muted); font-size: 6rem; font-weight: 900; }.resultPlaceholder p { color: var(--color-text-muted); }
-.baseline { display: grid; gap: .65rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border-subtle); }.baseline > strong { font-size: .8rem; }.baseline > small { color: var(--color-text-muted); }.baselineGrid { display: grid; gap: .5rem; }.baselineGrid > div { display: grid; gap: .25rem; padding: .75rem; border: 1px solid var(--color-border-subtle); border-radius: .55rem; background: var(--color-background); }.baselineGrid span, .baselineGrid small { color: var(--color-text-muted); font-size: .7rem; }.baselineGrid span { text-transform: uppercase; }
-@media (max-width: 64rem) { .calculatorGrid { grid-template-columns: 1fr; }.resultPanel { min-height: 20rem; }.skinReference { grid-template-columns: 1fr; } }
-@media (max-width: 44rem) { .priceGrid, .marketGrid { grid-template-columns: 1fr; }.direction { transform: rotate(90deg); text-align: center; }.swap { justify-self: center; transform: rotate(90deg); }.optionsGrid { grid-template-columns: 1fr 1fr; }.selectedSkin { grid-template-columns: 4rem 1fr; }.selectedSkin button { grid-column: 1 / -1; justify-self: start; } }
+/* Profit calculator: a plain form on the left, the result on the right. */
 
-/* 2026 deal workspace redesign */
-.page { gap: 1.5rem; }
-.hero { position: relative; min-height: 13rem; display: grid; align-content: center; overflow: hidden; padding: clamp(2rem, 5vw, 4.5rem); border: 1px solid var(--color-border-subtle); border-radius: 2rem; background: linear-gradient(120deg, var(--color-surface-solid), color-mix(in srgb, var(--color-accent-muted) 70%, var(--color-surface-solid))); box-shadow: var(--shadow-card); }
-.hero::after { position: absolute; top: -8rem; right: -3rem; width: 22rem; height: 22rem; border: 1px solid color-mix(in srgb, var(--color-accent-primary) 18%, transparent); border-radius: 38% 62% 42% 58%; content: ""; transform: rotate(-15deg); }
-.hero::after { pointer-events: none; }
+.page { display: grid; gap: 1.5rem; }
+
+.hero { padding-bottom: .5rem; }
 .hero > span,
-.resultPanel header > span { color: var(--color-accent-primary); font-family: var(--font-family-mono); font-size: .68rem; letter-spacing: .14em; }
-.hero h1 { margin: .6rem 0; font-family: var(--font-family-display); font-size: clamp(2.6rem, 6vw, 5.1rem); font-weight: 850; line-height: .96; letter-spacing: -.068em; text-wrap: balance; }
-.hero p { color: var(--color-text-secondary); text-wrap: pretty; }
-.skinReference,
-.formPanel,
-.resultPanel { border-color: var(--color-border-subtle); border-radius: 1.25rem; background: var(--color-surface); box-shadow: var(--shadow-card); backdrop-filter: blur(12px); }
-.skinReference { position: relative; z-index: 1; padding: 1.15rem; }
-.skinReference:focus-within { z-index: 2; }
+.resultPanel > header > span,
+.selectedSkin span { color: var(--color-text-muted); font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.hero h1 { margin: .5rem 0 .6rem; font-size: clamp(1.6rem, 3.2vw, 2.25rem); font-weight: 650; line-height: 1.12; letter-spacing: -.025em; }
+.hero p { max-width: 38rem; margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-md); text-wrap: pretty; }
+
 .searchWrap > label,
 .priceGrid label > span,
 .marketGrid label > span,
-.optionsGrid label > span { color: var(--color-text-muted); font-family: var(--font-family-mono); font-size: .63rem; }
+.optionsGrid label > span { color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 500; line-height: 1.2; }
 .searchWrap > input,
 .priceGrid input,
 .marketGrid select,
 .optionsGrid select,
-.selectedSkin select { border-color: var(--color-border-strong); border-radius: .72rem; background: var(--color-surface-solid); color: var(--color-text-primary); }
-.searchWrap > input { height: 3.25rem; }
-.suggestions { top: calc(100% + .45rem); max-height: min(22rem, 50vh); margin: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; border-color: var(--color-border-strong); border-radius: .85rem; background: var(--color-surface-solid); box-shadow: var(--shadow-raised); }
-.suggestions > li[role="status"] { padding: .75rem; color: var(--color-text-muted); }
-.suggestions button:focus-visible { outline: 2px solid var(--color-accent-primary); outline-offset: -2px; background: var(--color-surface-hover); }
-.suggestions button { cursor: pointer; }
-.suggestions button:hover { background: var(--color-surface-hover); }
-.selectedSkin img { filter: drop-shadow(0 .65rem .9rem rgb(12 50 41 / 14%)); }
-.selectedSkin span { color: var(--color-accent-primary); font-family: var(--font-family-mono); }
-.selectedSkin button { color: var(--color-accent-primary); font-weight: 700; }
-.calculatorGrid { grid-template-columns: minmax(0, 1.28fr) minmax(21rem, .72fr); gap: 1rem; }
-.formPanel { gap: 1.35rem; padding: clamp(1.1rem, 3vw, 2rem); }
-.priceGrid { gap: 1rem; }
-.priceGrid input { height: 4.5rem; font-family: var(--font-family-display); font-size: 1.9rem; font-variant-numeric: tabular-nums; }
-.priceGrid button { color: var(--color-accent-primary); font-weight: 700; }
-.direction { color: var(--color-accent-primary); }
-.savings,
-.error { border-radius: 0 .65rem .65rem 0; }
-.marketGrid select,
-.optionsGrid select { min-height: 3rem; }
-.swap { border-color: var(--color-border-strong); border-radius: .7rem; background: var(--color-accent-muted); color: var(--color-accent-primary); }
-.swap:hover { border-color: var(--color-accent-primary); }
-.fees { gap: .55rem; border-color: var(--color-border-subtle); border-radius: .85rem; background: var(--color-surface-raised); }
-.fees label { border: 1px solid var(--color-border-subtle); border-radius: .6rem; background: var(--color-surface-solid); }
-.fees strong { color: var(--color-accent-primary); font-family: var(--font-family-mono); font-variant-numeric: tabular-nums; }
-.submit { min-height: 3.35rem; border-radius: .75rem; background: var(--color-accent-primary); color: var(--color-on-accent); box-shadow: 0 .6rem 1.6rem color-mix(in srgb, var(--color-accent-primary) 20%, transparent); transition: background-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard); }
-.submit:hover:not(:disabled) { background: var(--color-accent-hover); box-shadow: 0 .8rem 2rem color-mix(in srgb, var(--color-accent-primary) 28%, transparent); transform: translateY(-.1rem); }
-.resultPanel { position: sticky; top: 6rem; align-self: start; }
-.resultPanel > header { background: var(--color-surface-raised); }
-.resultBody { padding: 1.15rem; }
-.heroResult { border-color: color-mix(in srgb, var(--color-accent-primary) 24%, var(--color-border-subtle)); border-radius: .9rem; background: linear-gradient(130deg, var(--color-accent-muted), var(--color-surface-solid)); }
-.heroResult strong { font-family: var(--font-family-display); font-size: 2.5rem; font-variant-numeric: tabular-nums; }
-.resultRow strong,
-.roiGrid strong,
-.baselineGrid strong { font-variant-numeric: tabular-nums; }
-.roiGrid > div,
-.baselineGrid > div { border: 1px solid var(--color-border-subtle); border-radius: .7rem; background: var(--color-surface-raised); }
-.resultPlaceholder { background: radial-gradient(circle at center, var(--color-accent-muted), transparent 58%); }
-.resultPlaceholder span { color: color-mix(in srgb, var(--color-accent-primary) 14%, transparent); font-family: var(--font-family-display); }
-@media (max-width: 64rem) { .calculatorGrid { grid-template-columns: 1fr; } .resultPanel { position: static; } }
-@media (max-width: 44rem) {
-  .hero { min-height: 16rem; padding: 2rem 1.25rem; border-radius: 1.4rem; }
-  .optionsGrid { grid-template-columns: 1fr; }
-  .skinReference { padding: .9rem; }
-}
+.selectedSkin select { min-width: 0; width: 100%; max-width: 100%; height: var(--control-height); padding: 0 .7rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); outline: 0; background-color: var(--color-surface); color: var(--color-text-primary); text-overflow: ellipsis; }
+.searchWrap > input::placeholder { color: var(--color-text-muted); }
 
-/* Consistent alignment and compact native controls. */
-.marketGrid select,
-.optionsGrid select,
-.selectedSkin select { height: var(--control-height); min-height: var(--control-height); }
-.swap { width: var(--control-height); height: var(--control-height); display: inline-flex; align-items: center; justify-content: center; align-self: end; padding: 0; line-height: 1; }
-.selectedSkin button,
-.priceGrid button { min-height: 2.25rem; display: inline-flex; align-items: center; justify-content: center; padding-inline: .65rem; border: 1px solid transparent; border-radius: .55rem; line-height: 1.15; }
-.selectedSkin button:hover,
-.priceGrid button:hover { border-color: var(--color-border-subtle); background: var(--color-surface-hover); }
-.fees label { min-height: var(--control-height); }
-.fees input[type="checkbox"] { width: var(--checkbox-size); min-width: var(--checkbox-size); height: var(--checkbox-size); margin: 0; accent-color: var(--color-accent-primary); }
-.submit { display: inline-flex; align-items: center; justify-content: center; line-height: 1.15; }
-.searchWrap input:focus:not(:focus-visible),
-.priceGrid input:focus:not(:focus-visible) { border-color: var(--color-border-strong); box-shadow: none; }
+/* ---------- Optional reference item ---------- */
 
-/* Keep the deal form at its natural height, independently of the result panel. */
-.calculatorGrid { align-items: start; }
-.formPanel { align-content: start; min-width: 0; }
-.skinReference { grid-template-columns: minmax(16rem, 1fr) minmax(0, 2fr); gap: 1.5rem; }
-.searchWrap, .selectedSkin, .referenceCopy { min-width: 0; }
-.selectedSkin { grid-template-columns: 5rem minmax(0, 1fr) auto; gap: 1rem; }
-.referencePreview { display: grid; place-items: center; width: 5rem; height: 5rem; border: 1px solid var(--color-border-subtle); border-radius: .85rem; background: var(--color-accent-muted); }
+.skinReference { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(0, 2fr); align-items: center; gap: 1.5rem; padding: 1rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface); }
+.skinReference:focus-within { z-index: 2; }
+.searchWrap { position: relative; min-width: 0; display: grid; gap: .3rem; }
+.suggestions { position: absolute; z-index: 5; top: calc(100% + .35rem); width: 100%; max-height: min(22rem, 50vh); margin: 0; padding: .35rem; overflow-y: auto; list-style: none; border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-raised); overscroll-behavior: contain; }
+.suggestions > li[role="status"] { padding: .7rem; color: var(--color-text-muted); }
+.suggestions button { width: 100%; display: flex; align-items: center; gap: .65rem; padding: .4rem .5rem; border: 0; border-radius: var(--radius-md); background: none; color: inherit; text-align: left; }
+.suggestions button:hover,
+.suggestions button:focus-visible { background: var(--color-surface-hover); }
+.suggestions button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.suggestions img { width: 3.5rem; height: 2.5rem; flex: none; object-fit: contain; }
+.suggestions span { min-width: 0; display: grid; }
+.suggestions strong { font-weight: 500; overflow-wrap: anywhere; }
+.suggestions small { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+
+.selectedSkin { min-width: 0; display: grid; grid-template-columns: 5rem minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
+.referencePreview { display: grid; place-items: center; width: 5rem; height: 5rem; border-radius: var(--radius-lg); background: var(--color-surface-raised); }
 .referencePreview img { display: block; width: 100%; height: 100%; padding: .25rem; object-fit: contain; object-position: center; }
-.selectedSkin > .referenceCopy { display: grid; gap: .4rem; }
-.referenceCopy strong { overflow-wrap: anywhere; line-height: 1.3; }
-.selectedSkin .removeReference { width: auto; min-width: 0; max-width: 10rem; min-height: var(--control-height); padding: .65rem .8rem; border-color: var(--color-border-subtle); text-align: center; text-wrap: balance; }
-.priceGrid, .marketGrid { grid-template-columns: minmax(0, 1fr) var(--control-height) minmax(0, 1fr); align-items: start; }
-.priceGrid label, .marketGrid label, .optionsGrid label { min-width: 0; align-content: start; }
-.priceGrid label > span, .marketGrid label > span, .optionsGrid label > span { display: flex; align-items: end; min-height: 1.8rem; line-height: 1.4; }
-.priceGrid small { min-height: 1.4rem; line-height: 1.4; overflow-wrap: anywhere; }
-.priceGrid button { width: fit-content; max-width: 100%; min-height: 2.5rem; padding-block: .4rem; text-align: left; white-space: normal; }
-.direction { display: grid; place-items: center; height: 4.5rem; margin-top: 2.25rem; }
-.swap { margin-top: 2.15rem; align-self: start; }
-.optionsGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem 1rem; }
-.marketGrid select, .optionsGrid select, .selectedSkin select { min-width: 0; max-width: 100%; padding-right: 1.8rem; text-overflow: ellipsis; }
-.savings, .error { align-self: start; min-height: 0; line-height: 1.6; }
-.fees { min-width: 0; }
-.fees label { grid-template-columns: auto minmax(0, 1fr) auto; padding-block: .6rem; }
-.fees span, .resultRow span { overflow-wrap: anywhere; }
-.resultRow { align-items: baseline; }
-.resultRow strong { flex-shrink: 0; }
-.resultBody { min-width: 0; }
-.suggestions strong { overflow-wrap: anywhere; }
+.referenceCopy { min-width: 0; display: grid; gap: .3rem; }
+.referenceCopy strong { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.removeReference { max-width: 10rem; min-height: var(--control-height); padding: .4rem .8rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-weight: 500; text-wrap: balance; }
+.removeReference:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
+.referenceHint { margin: 0; color: var(--color-text-muted); }
+
+/* ---------- Form ---------- */
+
+.calculatorGrid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(20rem, .7fr); align-items: start; gap: 1rem; }
+.formPanel,
+.resultPanel { min-width: 0; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-surface); }
+.formPanel { display: grid; align-content: start; gap: 1.25rem; padding: 1.25rem; }
+
+.priceGrid,
+.marketGrid { display: grid; grid-template-columns: minmax(0, 1fr) var(--control-height) minmax(0, 1fr); align-items: start; gap: .75rem; }
+.priceGrid label,
+.marketGrid label,
+.optionsGrid label { min-width: 0; display: grid; align-content: start; gap: .3rem; }
+.priceGrid label > span,
+.marketGrid label > span,
+.optionsGrid label > span { display: flex; align-items: end; min-height: 1.8rem; }
+.priceGrid input { height: 3.25rem; font-size: 1.375rem; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.priceGrid input[aria-invalid="true"] { border-color: var(--color-negative); }
+.priceGrid small { min-height: 1.4rem; color: var(--color-text-muted); font-size: var(--font-size-xs); line-height: 1.4; overflow-wrap: anywhere; }
+.priceGrid button { width: fit-content; max-width: 100%; min-height: 2rem; padding: .25rem .6rem; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 500; text-align: left; }
+.priceGrid button:hover { border-color: var(--color-border-strong); color: var(--color-text-primary); }
+.direction { display: grid; place-items: center; height: 3.25rem; margin-top: 2.1rem; color: var(--color-text-muted); font-size: var(--font-size-lg); }
+.swap { width: var(--control-height); height: var(--control-height); display: inline-flex; align-items: center; justify-content: center; margin-top: 2.1rem; padding: 0; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); background: transparent; color: var(--color-text-secondary); line-height: 1; }
+.swap:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
+
+.savings,
+.error { align-self: start; margin: 0; padding: .55rem .75rem; border-radius: var(--radius-md); background: var(--color-positive-muted); color: var(--color-positive); font-size: var(--font-size-sm); line-height: 1.5; }
+.error { background: var(--color-negative-muted); color: var(--color-negative); }
+
+.optionsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem 1rem; }
+
+.fees { min-width: 0; display: grid; gap: 0; margin: 0; padding: 0; border: 0; }
+.fees legend { padding: 0; font-weight: 600; }
+.fees > p { margin: .15rem 0 .5rem; color: var(--color-text-muted); font-size: var(--font-size-xs); }
+.fees label { min-height: var(--control-height); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .65rem; padding-block: .4rem; border-top: 1px solid var(--color-border-subtle); }
+.fees label:has(input:disabled) { color: var(--color-text-muted); }
+.fees input[type="checkbox"] { width: var(--checkbox-size); min-width: var(--checkbox-size); height: var(--checkbox-size); margin: 0; accent-color: var(--color-text-primary); }
+.fees span { overflow-wrap: anywhere; }
+.fees strong { font-family: var(--font-family-mono); font-size: var(--font-size-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.submit { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--color-text-primary); border-radius: var(--radius-md); background: var(--color-text-primary); color: var(--color-background); font-weight: 600; line-height: 1.15; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard); }
+.submit:hover:not(:disabled) { border-color: var(--color-text-secondary); background: var(--color-text-secondary); }
+.submit:disabled { opacity: .5; cursor: wait; }
+
+/* ---------- Result ---------- */
+
+.resultPanel { position: sticky; top: 4.75rem; overflow: hidden; }
+.resultPanel > header { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .9rem 1.25rem; border-bottom: 1px solid var(--color-border-subtle); }
+.resultPanel > header strong { font-size: var(--font-size-xs); font-weight: 600; }
+.resultBody { min-width: 0; display: grid; padding: 1.25rem; }
+.heroResult { display: grid; gap: .15rem; padding-bottom: 1rem; }
+.heroResult span,
+.resultRow span,
+.roiGrid span,
+.baselineGrid span { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+.heroResult strong { font-size: 2rem; font-weight: 650; letter-spacing: -.025em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.heroResult small,
+.roiGrid small,
+.baselineGrid small { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+.resultPositive { color: var(--color-positive); }
+.resultNegative { color: var(--color-negative); }
+.resultRow { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .5rem 0; border-top: 1px solid var(--color-border-subtle); }
+.resultRow span { overflow-wrap: anywhere; }
+.resultRow strong { flex-shrink: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+.roiGrid,
+.baselineGrid { display: grid; gap: 1px; overflow: hidden; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-border-subtle); }
+.roiGrid { margin-top: .75rem; }
+.roiGrid > div,
+.baselineGrid > div { display: grid; gap: .1rem; padding: .6rem .75rem; background: var(--color-surface); }
+.roiGrid strong,
+.baselineGrid strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.baseline { display: grid; gap: .6rem; margin-top: 1.25rem; }
+.baseline > strong { font-weight: 600; }
+.baseline > small { color: var(--color-text-muted); }
+.resultPlaceholder { min-height: 16rem; display: grid; align-content: center; justify-items: center; gap: .25rem; padding: 2rem; text-align: center; }
+.resultPlaceholder span { color: var(--color-border-strong); font-size: 2.5rem; font-weight: 650; letter-spacing: -.03em; }
+.resultPlaceholder p { max-width: 18rem; margin: 0; color: var(--color-text-muted); }
+
+/* ---------- Responsive ---------- */
+
 @media (max-width: 75rem) {
   .skinReference { grid-template-columns: 1fr; gap: 1rem; }
 }
+
+@media (max-width: 64rem) {
+  .calculatorGrid { grid-template-columns: 1fr; }
+  .resultPanel { position: static; }
+}
+
 @media (max-width: 44rem) {
   .selectedSkin { grid-template-columns: 4.5rem minmax(0, 1fr); gap: .75rem; }
   .referencePreview { width: 4.5rem; height: 4.5rem; }
-  .selectedSkin .removeReference { grid-column: 2; justify-self: start; max-width: 100%; }
-  .priceGrid, .marketGrid, .optionsGrid { grid-template-columns: minmax(0, 1fr); }
+  .removeReference { grid-column: 2; justify-self: start; max-width: 100%; }
+  .priceGrid,
+  .marketGrid,
+  .optionsGrid { grid-template-columns: minmax(0, 1fr); }
+  .priceGrid label > span,
+  .marketGrid label > span,
+  .optionsGrid label > span { min-height: 0; }
   .direction { height: 1.5rem; margin: 0; transform: rotate(90deg); }
   .swap { margin: 0; justify-self: center; transform: rotate(90deg); }
-  .priceGrid label > span, .marketGrid label > span, .optionsGrid label > span { min-height: 0; }
   .fees label { grid-template-columns: auto minmax(0, 1fr); }
   .fees strong { grid-column: 2; }
 }

@@ -92,6 +92,7 @@ export function CatalogPage() {
   const comparisonByVariant = useMemo(() => mergeCsMoneyPrices(comparisonQuery.data ?? cachedComparisonQuery.data, csMoneyPriceQuery.data), [comparisonQuery.data, cachedComparisonQuery.data, csMoneyPriceQuery.data]);
   const marketplaces = marketplaceQuery.data ?? [];
   const locale = i18n.resolvedLanguage === "ru" ? "ru-RU" : "en-US";
+  const marketName = (id: string) => marketplaces.find((item) => item.id === id)?.display_name ?? id;
   const selectedQuality = skinQuery.data?.qualities.find((quality) => quality.wear === searchParams.get("wear"));
 
   function chooseSkin(result: CatalogueSearchResult) {
@@ -104,7 +105,7 @@ export function CatalogPage() {
     <div className={styles.page}>
       <section className={styles.hero}>
         <div><span className={styles.eyebrow}>{t("catalog.eyebrow")}</span><h1>{t("catalog.title")}</h1><p>{t("catalog.subtitle")}</p></div>
-        <div className={styles.heroSignal}><span>{t("common.live")}</span><strong>{marketplaces.filter((item) => item.capabilities.supports_listings).length || "—"}</strong><small>{t("catalog.marketFeeds")}</small></div>
+        {marketplaces.length > 0 && <ul className={styles.heroSignal} aria-label={t("listings.marketplace")}>{marketplaces.filter((item) => item.capabilities.supports_listings).map((item) => <li key={item.id}>{item.display_name}</li>)}</ul>}
       </section>
 
       <section className={styles.searchPanel}>
@@ -160,7 +161,7 @@ export function CatalogPage() {
                 <div className={styles.qualityPrice}><strong>{cheapest ? t("catalog.marketFrom", { price: formatUsd(cheapest.quote.price_cents, locale) }) : t("catalog.noPrice")}</strong><span>{cheapest ? marketplaces.find((item) => item.id === cheapest.marketplaceId)?.display_name ?? cheapest.marketplaceId : "—"}</span></div>
                 {cheapest?.quote.source === "wiki_market_summary" && <span className={styles.quoteLabel}>{t("marketSource.summaryOnly")}</span>}
                 <div className={styles.marketMini}>{marketplaces.filter((market) => market.capabilities.supports_listings).map((market) => { const marketQuote = quotes.find((item) => item.marketplaceId === market.id && item.variant.variant_id === cheapest?.variant.variant_id)?.quote; return <span key={market.id}><small>{market.display_name}</small><b>{formatUsd(marketQuote?.price_cents, locale)}</b></span>; })}</div>
-                {best && <div className={best.profit_cents >= 0 ? styles.positive : styles.negative}>{best.buy_marketplace} → {best.sell_marketplace} · {best.profit_cents > 0 ? "+" : ""}{formatUsd(best.profit_cents, locale)} · {best.cash_roi_percent}%</div>}
+                {best && <div className={best.profit_cents >= 0 ? styles.positive : styles.negative}>{marketName(best.buy_marketplace)} → {marketName(best.sell_marketplace)} · {best.profit_cents > 0 ? "+" : ""}{formatUsd(best.profit_cents, locale)} · {best.cash_roi_percent}%</div>}
                 {best && <FlipRiskNotice level={best.risk_level} score={best.sell_liquidity?.score} compact />}
               </button>;
             })}

@@ -138,7 +138,7 @@ def test_result_exposes_effective_totals_break_even_and_applied_server_rules():
     }
     assert result.applied_fees.sell.percent == 5
     assert result.applied_fees.withdraw.fixed_cents == 100
-    assert result.fee_configuration_version == "2026-09-04"
+    assert result.fee_configuration_version == "2026-11-12"
 
 
 def test_request_rejects_client_supplied_fee_rates():
@@ -223,6 +223,6 @@ def test_marketplace_options_expose_dynamic_capabilities_and_fee_rules():
     assert csmoney["capabilities"]["supports_listings"] is True
     assert csmoney["capabilities"]["supports_float"] is True
     assert all(
-        option["fee_configuration_version"] == "2026-09-04"
+        option["fee_configuration_version"] == "2026-11-12"
         for option in options.values()
     )

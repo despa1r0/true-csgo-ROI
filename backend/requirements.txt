@@ -3,3 +3,4 @@ pydantic
 uvicorn[standard]
 python-dotenv
 psycopg[binary]>=3.2,<4
+cryptography

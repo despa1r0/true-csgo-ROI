@@ -143,6 +143,7 @@ export type ListingsResponse = MarketSourceSnapshot & {
   marketplace?: string;
   listings: Listing[];
   error?: string | null;
+  error_code?: "credentials_required" | null;
   cached?: boolean;
   stale?: boolean;
   is_stale?: boolean;

@@ -36,12 +36,22 @@ def market_response(
     }
 
 
+@pytest.fixture(autouse=True)
+def dmarket_without_quotes(monkeypatch):
+    """Tests that load the whole comparison name the providers they care about."""
+    monkeypatch.setattr(
+        market_comparison, "get_dmarket_prices",
+        lambda _skin_id: market_response("DMarket", None),
+    )
+
+
 @pytest.mark.parametrize("mode", ["smart", "quick_flip"])
 def test_cached_comparison_never_requests_providers_or_authenticated_bids(monkeypatch, mode):
     def forbidden(*_args, **_kwargs):
         pytest.fail("Cached comparison contacted a provider")
 
-    for name in ("get_csfloat_prices", "get_csgomarket_prices", "get_whitemarket_prices", "_load_quick_sell_prices"):
+    for name in ("get_csfloat_prices", "get_csgomarket_prices", "get_whitemarket_prices",
+                 "get_dmarket_prices", "_load_quick_sell_prices"):
         monkeypatch.setattr(market_comparison, name, forbidden)
     monkeypatch.setattr(market_comparison, "get_csmoney_prices", lambda _id: market_response("CS.MONEY", 1500))
     monkeypatch.setattr(market_comparison, "_cached_liquidity_signals", lambda *_args: {})

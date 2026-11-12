@@ -34,7 +34,7 @@ class MarketplaceConfig:
     fees: MarketplaceFees
 
 
-FEE_CONFIGURATION_VERSION = "2026-09-04"
+FEE_CONFIGURATION_VERSION = "2026-11-12"
 
 
 # This is the single registry a new marketplace needs to join.  The API/UI use
@@ -130,6 +130,35 @@ MARKETPLACES = {
                 "card": None,
             },
             sell=FeeRule(percent=5),
+            withdraw={
+                "crypto": FeeRule(percent=0),
+                "card": None,
+            },
+        ),
+    ),
+    "dmarket": MarketplaceConfig(
+        display_name="DMarket",
+        currency="USD",
+        can_buy=True,
+        can_sell=True,
+        supports_fast_buy=True,
+        supports_listings=True,
+        supports_sales_history=True,
+        supports_float=True,
+        supports_stickers=True,
+        supports_charms=True,
+        supports_best_deal_sort=False,
+        fees=MarketplaceFees(
+            # dmarket.com/faq, "DMarket Fees": the buyer pays no marketplace
+            # fee and a CS2 sale costs 2% (illiquid or low-priced items can be
+            # charged up to 10%; GET /exchange/v1/customized-fees is exact).
+            # Payment-provider fees are not published there, so only crypto
+            # is configured and it is modelled without a marketplace charge.
+            deposit={
+                "crypto": FeeRule(percent=0),
+                "card": None,
+            },
+            sell=FeeRule(percent=2),
             withdraw={
                 "crypto": FeeRule(percent=0),
                 "card": None,

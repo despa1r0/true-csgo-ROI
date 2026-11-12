@@ -16,6 +16,7 @@ from .profit import calculate_fee, calculate_profit
 from .routers.csmoney import router as csmoney_router
 from .routers.csgomarket import router as csgomarket_router
 from .routers.csfloat import router as csfloat_router
+from .routers.dmarket import router as dmarket_router
 from .routers.whitemarket import router as whitemarket_router
 
 load_dotenv()
@@ -31,6 +32,7 @@ app.include_router(csfloat_router)
 app.include_router(csgomarket_router)
 app.include_router(whitemarket_router)
 app.include_router(csmoney_router)
+app.include_router(dmarket_router)
 
 
 @app.get("/api/health")

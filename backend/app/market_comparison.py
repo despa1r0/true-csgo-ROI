@@ -16,6 +16,7 @@ from .csgomarket_data import (
 )
 from .csmoney_data import get_csmoney_prices
 from .database import get_connection
+from .dmarket_data import get_dmarket_prices, get_dmarket_variant_fast_buy
 from .repositories.market_prices import load_skin_cache
 from .analytics.liquidity import calculate_liquidity
 from .services.market_data import (
@@ -33,6 +34,7 @@ MARKET_RESPONSE_KEYS = {
     "CSGO Market": "csgomarket",
     "WhiteMarket": "whitemarket",
     "CS.MONEY": "csmoney",
+    "DMarket": "dmarket",
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
 LOG = logging.getLogger(__name__)
@@ -40,7 +42,8 @@ LOG = logging.getLogger(__name__)
 
 def _cached_price_response(skin_id: str, marketplace: str) -> dict[str, Any]:
     """Read saved asks without provider requests, authentication probes or cache writes."""
-    prefix = {"CSFloat": "CSFLOAT", "CSGO Market": "CSGOMARKET", "WhiteMarket": "WHITEMARKET"}[marketplace]
+    prefix = {"CSFloat": "CSFLOAT", "CSGO Market": "CSGOMARKET", "WhiteMarket": "WHITEMARKET",
+              "DMarket": "DMARKET"}[marketplace]
     try:
         ttl = max(1, int(os.getenv(f"{prefix}_CACHE_TTL_SECONDS", "300")))
     except ValueError:
@@ -73,6 +76,8 @@ def _fast_buy_function(marketplace: str):
         return get_csgomarket_variant_fast_buy
     if marketplace == "whitemarket":
         return get_whitemarket_variant_quick_sell
+    if marketplace == "dmarket":
+        return get_dmarket_variant_fast_buy
     raise ValueError(f"No fast-buy function for marketplace: {marketplace}")
 
 
@@ -91,11 +96,12 @@ def get_skin_market_comparison(
         ("CSGO Market", get_csgomarket_prices),
         ("WhiteMarket", get_whitemarket_prices),
         ("CS.MONEY", get_csmoney_prices),
+        ("DMarket", get_dmarket_prices),
     ]
     if cached_only:
         readers = [(name, lambda item_id, name=name: _cached_price_response(item_id, name))
                    for name, _ in readers if name != "CS.MONEY"] + [("CS.MONEY", get_csmoney_prices)]
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=len(readers)) as executor:
         futures = [(name, executor.submit(reader, skin_id)) for name, reader in readers]
         market_responses = []
         for name, future in futures:

@@ -1,11 +1,8 @@
 .card {
-  padding: clamp(var(--space-5), 4vw, var(--space-8));
+  padding: var(--space-6);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
 
-.elevated {
-  background: var(--color-surface-raised);
-  box-shadow: var(--shadow-raised);
-}
+.elevated { box-shadow: var(--shadow-raised); }

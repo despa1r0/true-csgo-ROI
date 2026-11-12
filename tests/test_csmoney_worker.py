@@ -5,7 +5,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from backend.app import csmoney_worker
-from backend.app.marketplaces.csmoney import CsMoneyRequestError
+from backend.app.marketplaces.csmoney import CsMoneyBlockedError, CsMoneyRequestError
 
 
 PAGE = SimpleNamespace(context=SimpleNamespace(new_page=lambda: SimpleNamespace(close=lambda: None)))
@@ -21,7 +21,7 @@ def test_storefront_403_uses_exact_wiki_summary_and_trips_circuit(monkeypatch):
         "market_hash_name": "AK-47 | Redline (Field-Tested)",
     })
     monkeypatch.setattr(csmoney_worker, "capture_variant", lambda *_args, **_kwargs: (
-        (_ for _ in ()).throw(CsMoneyRequestError("CS.MONEY page returned 403"))
+        (_ for _ in ()).throw(CsMoneyBlockedError("CS.MONEY page returned 403"))
     ))
     monkeypatch.setattr(csmoney_worker, "fetch_market_summary", lambda *_args: {
         "price_cents": 2578, "quantity": 1519,
@@ -68,7 +68,7 @@ def test_wiki_success_is_visible_at_info(monkeypatch, caplog, page):
         "item_name": "Redline", "market_hash_name": "Redline FT",
     })
     monkeypatch.setattr(csmoney_worker, "capture_variant", lambda *_args, **_kwargs: (
-        (_ for _ in ()).throw(CsMoneyRequestError("403"))
+        (_ for _ in ()).throw(CsMoneyBlockedError("403"))
     ))
     monkeypatch.setattr(csmoney_worker, "fetch_market_summary", lambda *_args: {
         "price_cents": 2578, "quantity": 1519,
@@ -108,7 +108,7 @@ def test_wiki_failure_is_classified_and_redacted(monkeypatch, caplog, page, erro
         "item_name": "Redline", "market_hash_name": "Redline FT",
     })
     monkeypatch.setattr(csmoney_worker, "capture_variant", lambda *_args, **_kwargs: (
-        (_ for _ in ()).throw(CsMoneyRequestError("403"))
+        (_ for _ in ()).throw(CsMoneyBlockedError("403"))
     ))
     monkeypatch.setattr(csmoney_worker, "fetch_market_summary", lambda *_args: (
         (_ for _ in ()).throw(error)

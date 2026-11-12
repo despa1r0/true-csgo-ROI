@@ -4,7 +4,7 @@ A local catalog of Counter-Strike 2 items with a React interface, fast search,
 marketplace data and server-side ROI calculation. The catalog comes from
 [ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) and is stored in
 PostgreSQL. Market data comes from adapters for CSFloat, CSGO Market,
-White.Market and CS.MONEY. Known production limitations are listed in
+White.Market, CS.MONEY and DMarket. Known production limitations are listed in
 [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 
 ## Quick start
@@ -105,6 +105,9 @@ The command is the same on Linux and in PowerShell.
   addressed or sold on marketplaces are excluded during import.
 - Active listings from CSFloat, CSGO Market and White.Market when their APIs are
   available, with per-marketplace filters and an `All marketplaces` mode.
+- DMarket through its official Trading API. The price index and best bid need no
+  keys; listings, the target book and sales history need API keys. See
+  [docs/DMARKET.md](docs/DMARKET.md).
 - Background CS.MONEY integration. Wiki Market is kept as a fallback aggregated
   summary. Current status and open issues: [docs/PROJECT_STATUS_2026-10-03.md](docs/PROJECT_STATUS_2026-10-03.md).
 - Stickers and charms are searchable as standalone items. The `has_stickers` and
@@ -128,7 +131,8 @@ The command is the same on Linux and in PowerShell.
 - PostgreSQL cache for price indexes and variant details.
 - Swagger UI at [http://localhost:8005/docs](http://localhost:8005/docs).
 
-Additional docs: [docs/FRONTEND.md](docs/FRONTEND.md), [docs/CSMONEY.md](docs/CSMONEY.md).
+Additional docs: [docs/FRONTEND.md](docs/FRONTEND.md), [docs/CSMONEY.md](docs/CSMONEY.md),
+[docs/DMARKET.md](docs/DMARKET.md).
 
 CS.MONEY worker with the existing Surfshark VPN setup:
 
@@ -177,7 +181,7 @@ skins · skin_variants        normalized prices, listings,
    capabilities, not a hard-coded list of marketplaces.
 
 Provider routes live in separate routers under `backend/app/routers`: `csfloat.py`,
-`csgomarket.py`, `whitemarket.py` and `csmoney.py`. Their public URLs and OpenAPI
+`csgomarket.py`, `whitemarket.py`, `csmoney.py` and `dmarket.py`. Their public URLs and OpenAPI
 parameters are covered by contract tests. Shared range validation is in
 `_validation.py`. `main.py` assembles the app and holds the shared catalog,
 comparison, calculation and SPA routes.
@@ -244,7 +248,7 @@ GET  /api/skins/search?q=redline&weapon=weapon_ak47&rarity=...&collection=...
 GET  /api/skins/{skin_id}
 
 Prices and listings
-GET  /api/skins/{skin_id}/market/{csfloat|csgomarket|whitemarket|csmoney}
+GET  /api/skins/{skin_id}/market/{csfloat|csgomarket|whitemarket|csmoney|dmarket}
 GET  /api/skins/{skin_id}/markets/compare?profit_mode=smart&deposit_method=crypto&withdraw_method=crypto
 GET  /api/skins/{skin_id}/market/{marketplace}/listings?wear=field-tested&variant=normal
 GET  /api/listings/{listing_id}/market/csfloat/quick-sell

@@ -29,7 +29,7 @@ def check(url: str, output: Path) -> None:
         rarity_color="#eb4b4b", min_float=0, max_float=1, has_stattrak=False, has_souvenir=False, variant_count=1)
     variant = dict(id="variant-qa", name=variant_name, market_hash_name=variant_name, wear_id="ft",
         wear_name="Field-Tested", stattrak=False, souvenir=False, image_url=skin["image_url"])
-    prices = dict(csfloat=4088, csgomarket=5200, csmoney=3900, whitemarket=4700)
+    prices = dict(csfloat=4088, csgomarket=5200, csmoney=3900, whitemarket=4700, dmarket=4100)
     quotes = {market: dict(marketplace=market, price_cents=price, item_url="https://example.test/",
         listing_id=f"{market}-1", float_value=.22, quantity=1, fetched_at=now, stale=False,
         source="storefront" if market == "csmoney" else "listing") for market, price in prices.items()}

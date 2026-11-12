@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import type { Sale } from "@/shared/api";
 import { formatDate, formatUsd } from "@/shared/lib/format";
 import styles from "../catalog/market.module.css";
+import { chartTheme } from "./chartTheme";
 
 use([LineChart, GridComponent, TooltipComponent, DataZoomComponent, CanvasRenderer]);
 
@@ -30,24 +31,25 @@ export function SalesChart({ sales, period }: Props) {
   useEffect(() => {
     if (!node.current || filtered.length === 0) return;
     const chart = init(node.current, undefined, { renderer: "canvas" });
+    const theme = chartTheme();
     chart.setOption({
       animationDuration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 420,
       backgroundColor: "transparent",
       grid: { left: 62, right: 20, top: 24, bottom: 52 },
       tooltip: {
         trigger: "axis",
-        backgroundColor: "#11131a",
-        borderColor: "#3a3e50",
-        textStyle: { color: "#f7f7fb" },
+        backgroundColor: theme.surface,
+        borderColor: theme.border,
+        textStyle: { color: theme.text },
         formatter: (params: unknown) => {
           const first = Array.isArray(params) ? params[0] as { value: [number, number] } : null;
           return first ? `${formatDate(new Date(first.value[0]).toISOString(), locale)}<br/><strong>${formatUsd(first.value[1], locale)}</strong>` : "";
         },
       },
-      xAxis: { type: "time", axisLabel: { color: "#747789" }, axisLine: { lineStyle: { color: "#272a38" } }, splitLine: { show: false } },
-      yAxis: { type: "value", scale: true, axisLabel: { color: "#747789", formatter: (value: number) => `$${Math.round(value / 100)}` }, splitLine: { lineStyle: { color: "#20232f" } } },
-      dataZoom: [{ type: "inside" }, { type: "slider", height: 16, bottom: 8, borderColor: "transparent", fillerColor: "rgba(139,92,246,.18)", handleStyle: { color: "#8b5cf6" }, textStyle: { color: "#747789" } }],
-      series: [{ type: "line", data: filtered.map((sale) => [new Date(sale.sold_at).getTime(), sale.price_cents]), showSymbol: true, symbolSize: 6, connectNulls: false, lineStyle: { color: "#22d3ee", width: 2 }, itemStyle: { color: "#a78bfa", borderColor: "#11131a", borderWidth: 2 }, areaStyle: { color: "rgba(34,211,238,.045)" } }],
+      xAxis: { type: "time", axisLabel: { color: theme.axis }, axisLine: { lineStyle: { color: theme.grid } }, splitLine: { show: false } },
+      yAxis: { type: "value", scale: true, axisLabel: { color: theme.axis, formatter: (value: number) => `$${Math.round(value / 100)}` }, splitLine: { lineStyle: { color: theme.grid } } },
+      dataZoom: [{ type: "inside" }, { type: "slider", height: 16, bottom: 8, borderColor: "transparent", fillerColor: theme.grid, handleStyle: { color: theme.axis }, textStyle: { color: theme.axis } }],
+      series: [{ type: "line", data: filtered.map((sale) => [new Date(sale.sold_at).getTime(), sale.price_cents]), showSymbol: true, symbolSize: 6, connectNulls: false, lineStyle: { color: theme.line, width: 1.5 }, itemStyle: { color: theme.line, borderColor: theme.surface, borderWidth: 2 } }],
     });
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(node.current);

@@ -141,7 +141,10 @@ def schedule_candidates(*, batch_size: int = 30) -> int:
                   AND (st.exact_matches <> 0 OR st.is_partial IS NOT TRUE
                        OR st.last_attempt_at IS NULL
                        OR st.last_attempt_at < NOW() - (%s * INTERVAL '1 second'))
-                ORDER BY st.fetched_at NULLS FIRST, v.id
+                -- Never-attempted variants first, then the least recently tried.
+                -- Ordering by fetched_at alone would put every failing variant
+                -- (fetched_at IS NULL) ahead of the sweep on each cycle.
+                ORDER BY COALESCE(st.fetched_at, st.last_attempt_at) NULLS FIRST, v.id
                 LIMIT %s
                 """,
                 (hot_ids, crawl_ttl, crawl_ttl, max(0, batch_size - len(hot_ids))),
@@ -255,7 +258,10 @@ def process_one(page) -> bool:
         raise
     except CsMoneyRequestError as error:
         message = str(error)
-        if isinstance(error, CsMoneyBlockedError) or "403" in message or "429" in message:
+        # Only a classified block trips the six-hour gate. Matching "403" in
+        # free text would also fire on a timeout whose URL or item name
+        # happens to contain those digits.
+        if isinstance(error, CsMoneyBlockedError):
             # Stop storefront requests globally while using the separate
             # public Wiki Market summary. One 403 is enough to trip the gate.
             try:

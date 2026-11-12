@@ -96,9 +96,10 @@ def store_csfloat_price_index(
         )
 
 
-def store_whitemarket_listing_rows(
+def store_listing_rows(
     rows: list[dict[str, Any]], *, marketplace: str
 ) -> None:
+    """Upsert per-variant minimum quotes, each with its own fetch time."""
     if not rows:
         return
     with get_connection() as connection:
@@ -123,6 +124,10 @@ def store_whitemarket_listing_rows(
                 """,
                 [{**row, "marketplace": marketplace} for row in rows],
             )
+
+
+# Earlier name, kept for existing callers.
+store_whitemarket_listing_rows = store_listing_rows
 
 
 def _csfloat_index_row(

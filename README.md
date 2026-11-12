@@ -1,58 +1,57 @@
 # trueROI
 
-Локальный каталог предметов Counter-Strike 2 с React-интерфейсом, быстрым поиском, данными маркетплейсов и серверным расчётом ROI. Каталог берётся из [ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) и хранится в PostgreSQL; рыночные данные поступают через адаптеры CSFloat, CSGO Market, White.Market и CS.MONEY. Текущие ограничения production перечислены в [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
+A local catalog of Counter-Strike 2 items with a React interface, fast search,
+marketplace data and server-side ROI calculation. The catalog comes from
+[ByMykel/CSGO-API](https://github.com/ByMykel/CSGO-API) and is stored in
+PostgreSQL. Market data comes from adapters for CSFloat, CSGO Market,
+White.Market and CS.MONEY. Known production limitations are listed in
+[docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
 
-## Быстрый запуск на Linux и Windows
+## Quick start
 
-Проект запускается через Docker Compose: отдельные процессы поднимают PostgreSQL,
-одноразовый импорт каталога (`catalog-seed`) и FastAPI. Нужны ключи CSFloat и
-CSGO Market — без них стартовый скрипт Windows остановится, а рыночные данные не
-будут доступны.
+The app runs with Docker Compose: PostgreSQL, a one-off catalog import
+(`catalog-seed`) and the FastAPI service. A CSFloat key and a CSGO Market key are
+required. Without them, `start.ps1` stops and market data is unavailable.
 
-Корневой Dockerfile использует multi-stage build: Node 22 собирает
-`frontend-react`, после чего готовый `dist` копируется в runtime-образ FastAPI.
-Backend не содержит fallback на удалённый legacy frontend.
+The root `Dockerfile` is a multi-stage build: Node 22 builds `frontend-react`,
+and the resulting `dist` is copied into the FastAPI runtime image.
 
-Первый запуск скачивает скины и дополнительные каталоги ByMykel: кейсы, капсулы,
-наклейки, charms, агентов, collectibles/значки, музыку, нашивки, граффити, ключи,
-sticker slabs, инструменты и souvenir charms. Затем создаётся схема PostgreSQL и
-импортируются рыночные варианты и коллекции. Это может занять
-несколько минут. Данные БД сохраняются в Docker volume.
+The first run downloads skins and the additional ByMykel catalogs (cases,
+capsules, stickers, charms, agents, collectibles, music, patches, graffiti,
+keys, sticker slabs, tools and souvenir charms), creates the PostgreSQL schema
+and imports market variants and collections. This takes a few minutes. Database
+data is kept in a Docker volume.
 
 ### Linux
 
-1. Установите и запустите Docker Engine с Docker Compose v2. Убедитесь, что
-   текущий пользователь имеет доступ к Docker:
+1. Install Docker Engine with Compose v2 and make sure your user can access Docker:
 
    ```bash
    docker compose version
    docker ps
    ```
 
-2. В корне репозитория создайте локальный файл настроек и добавьте в него ключи:
+2. Create `.env` from the template and add your keys:
 
    ```bash
    cp .env.example .env
    ```
 
-   В `.env` заполните как минимум:
-
    ```dotenv
-   CSFLOAT_API_KEY=ваш_ключ
-   CSGOMARKET_API_KEY=ваш_ключ
+   CSFLOAT_API_KEY=your_key
+   CSGOMARKET_API_KEY=your_key
    ```
 
-3. Соберите и запустите сервисы:
+3. Build and start the services:
 
    ```bash
    docker compose up --build
    ```
 
-   Для фонового запуска используйте `docker compose up --build -d`.
-   После успешного импорта в логах появится `Catalogue is ready`.
+   Add `-d` to run in the background. The logs print `Catalogue is ready` when
+   the import has finished.
 
-4. Откройте [http://localhost:8005](http://localhost:8005). Проверить, что API
-   отвечает, можно командой:
+4. Open [http://localhost:8005](http://localhost:8005) or check the API:
 
    ```bash
    curl http://localhost:8005/api/health
@@ -60,94 +59,94 @@ sticker slabs, инструменты и souvenir charms. Затем созда�
 
 ### Windows
 
-1. Установите Docker Desktop, запустите его и дождитесь статуса *Engine running*.
-   В PowerShell из корня репозитория проверьте Compose:
+1. Install Docker Desktop, start it and wait for *Engine running*. Then check Compose from the repository root:
 
    ```powershell
    docker compose version
    ```
 
-2. Запустите подготовленный скрипт:
+2. Run the start script:
 
    ```powershell
    .\start.ps1
    ```
 
-   Если `.env` отсутствует, скрипт создаст его из `.env.example`. Заполните в
-   созданном файле `CSFLOAT_API_KEY` и `CSGOMARKET_API_KEY`, затем повторите
-   команду. Для запуска в фоне:
+   If `.env` is missing, the script creates it from `.env.example`. Fill in
+   `CSFLOAT_API_KEY` and `CSGOMARKET_API_KEY`, then run the script again. To run
+   in the background, use `.\start.ps1 -Detached`.
 
-   ```powershell
-   .\start.ps1 -Detached
-   ```
+3. After `Catalogue is ready`, open [http://localhost:8005](http://localhost:8005).
+   Check the API with `Invoke-WebRequest http://localhost:8005/api/health`.
 
-3. После `Catalogue is ready` откройте [http://localhost:8005](http://localhost:8005).
-   Проверка API из PowerShell:
-
-   ```powershell
-   Invoke-WebRequest http://localhost:8005/api/health
-   ```
-
-### Управление запуском
-
-Посмотреть состояние и логи сервисов:
+### Managing the stack
 
 ```bash
-docker compose ps
-docker compose logs -f api
+docker compose ps            # service status
+docker compose logs -f api   # API logs
+docker compose down          # stop, keep the database
+docker compose down -v       # stop and delete the database volume (full re-import on next start)
 ```
 
-Остановить приложение, сохранив базу:
+`down -v` deletes the PostgreSQL volume and all stored project data.
+
+To refresh only the catalog while the database is running:
 
 ```bash
-docker compose down
+docker compose run --rm catalog-seed
 ```
 
-Полностью удалить локальную БД и начать импорт заново:
+The command is the same on Linux and in PowerShell.
+
+## Features
+
+- React + TypeScript UI in `frontend-react`, with Russian and English localization.
+- Catalog on `/` with autocomplete, filters by item type, weapon, rarity and
+  collection, wear variants and marketplace prices. Entries that cannot be reliably
+  addressed or sold on marketplaces are excluded during import.
+- Active listings from CSFloat, CSGO Market and White.Market when their APIs are
+  available, with per-marketplace filters and an `All marketplaces` mode.
+- Background CS.MONEY integration. Wiki Market is kept as a fallback aggregated
+  summary. Current status and open issues: [docs/PROJECT_STATUS_2026-10-03.md](docs/PROJECT_STATUS_2026-10-03.md).
+- Stickers and charms are searchable as standalone items. The `has_stickers` and
+  `has_charm` listing filters only check whether an attachment exists, not which one.
+- Attachment hover shows its reference price when the provider supplies one.
+  Missing prices are not calculated or substituted.
+- Item analytics modal with price history, active listings, quick sell and
+  marketplace comparison.
+- History periods: 24 hours, 7 days, 14 days and the full available range. Charts
+  use only real sales, with no synthetic points.
+- CSFloat and CSGO Market provide public sales history (CSGO Market history has no
+  float values). White.Market does not provide public sales history.
+- Calculator at `/calculator` with manual buy and sell prices, optional skin
+  selection, marketplace swap, and Raw, Smart, Enhanced, Quick flip and Custom modes.
+- Separate checkboxes for deposit, sell and withdrawal fees. Fee rates are set on
+  the server and cannot be edited in the browser.
+- Marketplace capabilities drive which listings, history, quick sell, float,
+  sticker, charm and `best_deal` sorting options are shown.
+- Server-side comparison of trade directions, buy orders, quick-sell price and a
+  beta liquidity score. Liquidity is diagnostic only and does not change profit or ROI.
+- PostgreSQL cache for price indexes and variant details.
+- Swagger UI at [http://localhost:8005/docs](http://localhost:8005/docs).
+
+Additional docs: [docs/FRONTEND.md](docs/FRONTEND.md), [docs/CSMONEY.md](docs/CSMONEY.md).
+
+CS.MONEY worker with the existing Surfshark VPN setup:
 
 ```bash
-docker compose down -v
+docker compose -f docker-compose.csmoney-test.yml up --build -d
 ```
 
-> Эта команда удаляет Docker volume с PostgreSQL и все сохранённые данные проекта.
-
-## Что доступно
-
-- React + TypeScript интерфейс из `frontend-react` с русской и английской локализацией;
-- каталог на `/` с автоподсказками, фильтрами по типу предмета, оружию, редкости и коллекции, wear-вариантами и ценами площадок; при импорте исключаются entries, которые нельзя надёжно адресовать и продавать на маркетплейсах;
-- активные лоты CSFloat, CSGO Market и White.Market при доступности внешних API, с доступными для каждой площадки фильтрами и режимом `All marketplaces`;
-- фоновая интеграция CS.MONEY; по отчёту от 3 октября 2026 текущей ошибки 403 нет, но остаются проблемы загрузки цен, отображения кэша в Compare и объяснения свежести — см. [актуальный статус проекта](docs/PROJECT_STATUS_2026-10-03.md); Wiki Market остаётся резервной агрегированной сводкой;
-- наклейки и charms ищутся в общем каталоге как самостоятельные предметы; внутри списка лотов фильтры `has_stickers`/`has_charm` пока проверяют только наличие attachment, а не его конкретное имя/ID;
-- hover по attachment показывает его справочную цену, когда провайдер передал её; отсутствующая цена не вычисляется и не подменяется;
-- модальное окно аналитики с возвратом в каталог, вкладками истории, активных лотов, быстрой продажи и сравнения площадок;
-- периоды истории 24 часа, 7 дней, 14 дней и вся доступная выборка; графики строятся только из реальных продаж без синтетических точек;
-- CSFloat и CSGO Market предоставляют доступную публичную историю (история CSGO Market не содержит float), а White.Market публичную историю продаж не предоставляет;
-- отдельный калькулятор на `/calculator` с ручными ценами покупки/продажи, необязательным выбором скина, swap площадок и режимами Raw, Smart, Enhanced, Quick flip и Custom; при выбранном скине он отдельно показывает результат фактической сделки и результат покупки по текущему рыночному ориентиру;
-- независимые чекбоксы учёта комиссий пополнения, продажи и вывода; ставки и фиксированные части задаются сервером и не редактируются в браузере;
-- динамические capabilities площадок управляют доступностью лотов, истории, quick sell, float, наклеек, charm и сортировки `best_deal`;
-- серверное сравнение направлений сделки, заявки на покупку, цена быстрой продажи и beta-оценка ликвидности; liquidity остаётся диагностической метрикой и не корректирует profit/ROI;
-- PostgreSQL-кэш индексов цен и подробностей вариантов;
-- Swagger API: `http://localhost:8005/docs`.
-
-Подробное описание frontend-архитектуры и ограничений: [`docs/FRONTEND.md`](docs/FRONTEND.md).
-
-Исторический аудит CS.MONEY: [`docs/archive/CSMONEY_REVIEW.md`](docs/archive/CSMONEY_REVIEW.md).
-
-Отдельный запуск CS.MONEY-воркера с существующим Surfshark VPN:
-`docker compose -f docker-compose.csmoney-test.yml up --build -d`.
-Настройка и проверка описаны в [`docs/CSMONEY.md`](docs/CSMONEY.md#локальный-запуск).
-
-## Как сейчас устроен проект
+## Architecture
 
 ```text
 ByMykel / CSGO-API       CSFloat · CSGO Market · White.Market
          │                              │
          │ catalog-seed                 │ adapters
          ▼                              ▼
-skins · skin_variants       нормализованные цены, лоты,
-· skin_collections          заявки и доступная история
+skins · skin_variants        normalized prices, listings,
+· skin_collections           buy orders and public history
          │                              │
-         └──────── PostgreSQL-кэш ──────┘
+         └──────── PostgreSQL cache ────┘
                         │
                         ▼
           FastAPI: /api/* + Profit Engine
@@ -156,291 +155,220 @@ skins · skin_variants       нормализованные цены, лоты,
        frontend-react (React + TypeScript + Vite)
 ```
 
-### Поток данных
+### Data flow
 
-1. `catalog-seed` скачивает список вариантов скинов, сгруппированные коллекции и
-   дополнительные категории предметов из `CATALOG_EXTRA_SOURCE_BASE_URL`.
-   Непригодные для торговли entries — без явного `market_hash_name`, account-bound,
-   preview/unreleased и неподдерживаемые collectibles — не попадают в ROI-каталог.
-   Затем выполняется идемпотентный upsert в PostgreSQL. Поиск всегда работает по
-   локальному каталогу, а не по API маркетплейсов.
-2. Пользователь ищет базовый скин в `skins`, выбирает один из его вариантов в
-   `skin_variants` — например, конкретный wear или StatTrak™.
-3. API сопоставляет вариант с площадками по точному английскому
-   `market_hash_name`, а не по `paint_index`. Это же правило используется для
-   новых типов предметов. Адаптеры получают динамические данные: минимальную
-   цену, конкретные лоты, заявки и, когда площадка это поддерживает, историю
-   продаж.
-4. Общие индексы цен сохраняются в `marketplace_listings`, а подробности варианта
-   (лоты, стакан, история и ликвидность) — в `marketplace_variant_details`.
-   Поэтому повторное открытие карточки не обязано обращаться к внешней площадке.
-5. Для выбранного сравнения API параллельно получает нормализованные данные
-   площадок направления сделки.
-   Profit Engine принимает уже готовые суммы и правила комиссий; он не знает о
-   HTTP, FastAPI, PostgreSQL или формате ответов внешних API.
-6. React-клиент получает реестр `/api/marketplaces` и включает элементы интерфейса
-   по capabilities, а не по жёстко заданному списку площадок.
+1. `catalog-seed` downloads skin variants, grouped collections and extra item
+   categories from `CATALOG_EXTRA_SOURCE_BASE_URL`, then upserts them into PostgreSQL.
+   Entries without a `market_hash_name`, account-bound items, preview/unreleased
+   items and unsupported collectibles are skipped. Search always uses the local
+   catalog, not marketplace APIs.
+2. A user searches a base skin in `skins` and selects a variant in `skin_variants`
+   (for example a specific wear or StatTrak™).
+3. The API matches the variant to marketplaces by the exact English
+   `market_hash_name`, not by `paint_index`. The same rule applies to new item types.
+   Adapters return live minimum prices, listings, buy orders and, where supported, sales history.
+4. Price indexes are stored in `marketplace_listings`. Variant details (listings,
+   order book, history and liquidity) are stored in `marketplace_variant_details`,
+   so reopening a card does not require calling the marketplace again.
+5. For a selected comparison, the API fetches normalized data for both sides of the
+   trade in parallel. The Profit Engine receives ready amounts and fee rules only.
+   It has no knowledge of HTTP, FastAPI, PostgreSQL or external API formats.
+6. The React client loads `/api/marketplaces` and enables UI elements based on
+   capabilities, not a hard-coded list of marketplaces.
 
-HTTP-маршруты провайдеров вынесены из `backend/app/main.py` в отдельные FastAPI
-routers: `csfloat.py`, `csgomarket.py`, `whitemarket.py` и `csmoney.py` в
-`backend/app/routers`. Публичные URL и параметры OpenAPI сохранены и закреплены
-контрактными тестами; общая проверка диапазонов находится в `_validation.py`.
-`main.py` остаётся точкой сборки приложения и содержит общие маршруты каталога,
-сравнения площадок, расчёта и раздачи SPA.
+Provider routes live in separate routers under `backend/app/routers`: `csfloat.py`,
+`csgomarket.py`, `whitemarket.py` and `csmoney.py`. Their public URLs and OpenAPI
+parameters are covered by contract tests. Shared range validation is in
+`_validation.py`. `main.py` assembles the app and holds the shared catalog,
+comparison, calculation and SPA routes.
 
-### Каталог и нормализация данных
+### Data layers
 
-Каталог и рынок — разные слои данных:
-
-| Слой | Что в нём хранится | Зачем |
+| Layer | Contents | Purpose |
 | --- | --- | --- |
-| `skins` | базовый скин, оружие, редкость, изображение, float-диапазон | локальный поиск и группировка |
-| `skin_variants` | точное рыночное имя, wear, StatTrak™, Souvenir | выбор предмета, который можно сопоставить с маркетплейсом |
-| `skin_collections` | связи с коллекциями | фильтр по коллекции |
-| `marketplace_listings` | минимальная цена, количество, время получения и площадка | кэш индекса цен |
-| `marketplace_variant_details` | подробные лоты, заявки, история и метрики | кэш модального окна и быстрой продажи |
+| `skins` | base skin, weapon, rarity, image, float range | local search and grouping |
+| `skin_variants` | exact market name, wear, StatTrak™, Souvenir | selecting an item that can be matched on a marketplace |
+| `skin_collections` | collection links | collection filter |
+| `marketplace_listings` | minimum price, quantity, fetch time, marketplace | price index cache |
+| `marketplace_variant_details` | detailed listings, buy orders, history, metrics | modal and quick-sell cache (600 s TTL) |
 
-Исходные записи каталога остаются в `raw_data JSONB`, поэтому новые поля источника
-можно подключать без немедленной переделки всей схемы.
+Source records are kept in `raw_data JSONB`, so new source fields can be added
+without a schema rewrite.
 
-Каждый adapter изолирует формат своей площадки. Общая минимальная котировка в коде
-называется `MarketPrice` и имеет единый вид:
+Each adapter isolates its marketplace's format. The shared minimal quote is
+`MarketPrice`:
 
 ```text
 marketplace · price_cents · item_url · listing_id? · float_value? · quantity? · fetched_at? · stale
 ```
 
-Для конкретных лотов адаптеры также возвращают одинаковые по смыслу поля:
-`listing_id`, `price_cents`, `item_url`, `float_value`, `paint_seed`,
-`paint_index`, `stickers`, `charms`. Поля, которых площадка не даёт, остаются
-`null` или пустым списком: например, публичная история CSGO Market не содержит
-float проданных предметов, а её идентификаторы наклеек пока не сопоставляются с
-официальным каталогом.
+Listing adapters also return `listing_id`, `price_cents`, `item_url`,
+`float_value`, `paint_seed`, `paint_index`, `stickers` and `charms`. Fields a
+marketplace does not provide are `null` or an empty list. For example, CSGO Market
+public history has no float values, and its sticker IDs are not yet mapped to the
+official catalog.
 
-Все денежные значения внутри приложения — целые `*_cents`, не `float`:
+### Money and ROI
+
+All money values are integer `*_cents`, never `float`:
 
 ```text
-effective_buy = buy_price + deposit_fee
+effective_buy    = buy_price + deposit_fee
 effective_payout = sell_price - sell_fee - withdraw_fee
-profit = effective_payout - effective_buy
-ROI = profit / effective_buy × 100
+profit           = effective_payout - effective_buy
+ROI              = profit / effective_buy × 100
 ```
 
-Процентные и фиксированные комиссии описаны отдельно в
-`backend/app/marketplaces_fees.py`. Режимы `raw`, `smart`, `enhanced` и
-`quick_flip` выбирают, какие из этих правил применить; в `quick_flip` цена продажи
-берётся из лучшей заявки на покупку другой площадки. Backend проверяет все
-доступные направления покупки и быстрой продажи и сортирует их по чистой прибыли,
-поэтому минимальный ask не считается лучшим направлением заранее.
+Percentage and fixed fees are defined in `backend/app/marketplaces_fees.py`. The
+modes `raw`, `smart`, `enhanced` and `quick_flip` select which rules apply. In
+`quick_flip`, the sell price is the best buy order on the receiving marketplace.
+The backend checks all available buy and quick-sell directions and sorts them by
+net profit, so the lowest ask is not assumed to be the best option.
 
-`Smart` — сценарий ask-to-ask с серверными комиссиями: цена продажи является
-ценой будущего листинга, а не гарантированной немедленной сделкой. `Quick flip`
-использует исполнимый лучший bid принимающей площадки. Liquidity score не входит
-в формулы и не изменяет ни `profit_cents`, ни один из показателей ROI.
+- `smart` is an ask-to-ask scenario with server-side fees. The sell price is the
+  price of a future listing, not a guaranteed immediate sale.
+- `quick_flip` uses the executable best bid on the receiving marketplace.
+- The liquidity score is not part of any formula and does not affect `profit_cents` or ROI.
 
-## API каталога
+## API
 
-Ниже перечислены все маршруты текущего backend-а. Интерактивные схемы запросов и
-ответов доступны в Swagger: [http://localhost:8005/docs](http://localhost:8005/docs).
-
-### Состояние и локальный каталог
+Full request and response schemas are in Swagger at
+[http://localhost:8005/docs](http://localhost:8005/docs).
 
 ```text
-GET /api/health
-GET /api/catalog/filters
-GET /api/items/search?q=sticker&item_type=sticker
-GET /api/skins/search?q=redline&weapon=weapon_ak47&rarity=rarity_mythical_weapon&collection=collection-set-community-2
-GET /api/skins/{skin_id}
-```
+Catalog
+GET  /api/health
+GET  /api/catalog/filters
+GET  /api/items/search?q=sticker&item_type=sticker
+GET  /api/skins/search?q=redline&weapon=weapon_ak47&rarity=...&collection=...
+GET  /api/skins/{skin_id}
 
-- `GET /api/health` — статус приложения и число записей каталога.
-- `GET /api/catalog/filters` — доступные оружия, редкости и коллекции.
-- `GET /api/items/search` — основной поиск по всем типам предметов. `q` имеет
-  лимит 100 символов, `limit` — от 1 до 20; поддерживаются `item_type`, `weapon`,
-  `rarity`, `collection`. `/api/skins/search` сохранён как совместимый alias.
-- `GET /api/skins/{skin_id}` — базовый скин с его вариантами.
+Prices and listings
+GET  /api/skins/{skin_id}/market/{csfloat|csgomarket|whitemarket|csmoney}
+GET  /api/skins/{skin_id}/markets/compare?profit_mode=smart&deposit_method=crypto&withdraw_method=crypto
+GET  /api/skins/{skin_id}/market/{marketplace}/listings?wear=field-tested&variant=normal
+GET  /api/listings/{listing_id}/market/csfloat/quick-sell
+GET  /api/variants/{variant_id}/market/{marketplace}
+GET  /api/variants/{variant_id}/market/csmoney/price-history
 
-### Цены, лоты и аналитика маркетплейсов
-
-```text
-GET /api/skins/{skin_id}/market/csfloat
-GET /api/skins/{skin_id}/market/csgomarket
-GET /api/skins/{skin_id}/market/whitemarket
-GET /api/skins/{skin_id}/market/csmoney
-GET /api/skins/{skin_id}/markets/compare?profit_mode=smart&deposit_method=crypto&withdraw_method=crypto
-GET /api/skins/{skin_id}/market/csfloat/listings?sort_by=best_deal&wear=field-tested&variant=normal&has_stickers=true&has_charm=false
-GET /api/skins/{skin_id}/market/csgomarket/listings?sort_by=lowest_price&wear=field-tested&variant=normal
-GET /api/skins/{skin_id}/market/whitemarket/listings?wear=field-tested&variant=normal
-GET /api/skins/{skin_id}/market/csmoney/listings?wear=field-tested&variant=normal
-GET /api/listings/{listing_id}/market/csfloat/quick-sell
-GET /api/variants/{variant_id}/market/csfloat
-GET /api/variants/{variant_id}/market/csgomarket
-GET /api/variants/{variant_id}/market/whitemarket
-GET /api/variants/{variant_id}/market/csmoney
-GET /api/variants/{variant_id}/market/csmoney/price-history
-```
-
-- Маршруты `/market/csfloat`, `/market/csgomarket`, `/market/whitemarket` и
-  `/market/csmoney` возвращают кэшированный
-  индекс минимальных цен для всех вариантов выбранного скина.
-- `/markets/compare` сопоставляет варианты двух площадок, показывает самую дешёвую
-  цену, gross spread и обе стороны сделки с расчётом ROI. Принимает
-  `profit_mode=raw|smart|enhanced|quick_flip`, `deposit_method=card|crypto`,
-  `withdraw_method=card|crypto` и `use_deposit_fee`.
-- Маршруты `/listings` возвращают конкретные лоты. Общие параметры: `wear`,
-  `variant=any|normal|stattrak|souvenir`, `min_float`, `max_float`,
-  `min_price_cents`, `max_price_cents`, `has_stickers`, `has_charm`, `limit`
-  (1–50). CSFloat передаёт свою сортировку `best_deal|lowest_price` во внешнее
-  API. CSGO Market сейчас всегда сортирует лоты локально по минимальной цене;
-  параметр `sort_by` сохраняется в ответе как запрошенный для совместимости UI.
-  Поддержка фильтров в React-интерфейсе ограничивается capabilities выбранной
-  площадки.
-- Маршруты `/api/variants/{variant_id}/market/...` лениво загружают и кэшируют
-  подробности одного точного варианта: активные лоты, buy orders, историю продаж
-  и beta-оценку ликвидности.
-- `GET /api/listings/{listing_id}/market/csfloat/quick-sell` возвращает подходящие
-  заявки CSFloat для уже выбранного конкретного лота.
-
-### Площадки и чистый расчёт прибыли
-
-```text
-GET  /api/market-overview
+Marketplaces and calculation
 GET  /api/marketplaces
+GET  /api/market-overview
 POST /api/calculate
 ```
 
-- `GET /api/marketplaces` — возможности и доступные способы ввода/вывода для
-  площадок, зарегистрированных в правилах комиссий.
-- `GET /api/market-overview` — те же данные, дополненные демонстрационным именем
-  предмета для интерфейса.
-- `POST /api/calculate` — детерминированный расчёт без запросов к площадкам.
-  Тело: `buy_price_cents`, `sell_price_cents`, `buy_marketplace`,
-  `sell_marketplace`, а также опциональные `profit_mode`, `deposit_method`,
-  `withdraw_method`, `sell_mode`, `use_deposit_fee`, `use_sell_fee` и
-  `use_withdraw_fee`. Пользователь выбирает, учитывать ли операции, но сами
-  ставки принадлежат серверной конфигурации. Ответ содержит каждую комиссию,
-  effective buy/payout, точку безубыточности, прибыль и три варианта ROI.
+- `/market/{marketplace}` returns the cached minimum price index for all variants of a skin.
+- `/markets/compare` matches variants across two marketplaces and returns the
+  cheapest price, gross spread and both sides of the trade with ROI. Accepts
+  `profit_mode=raw|smart|enhanced|quick_flip`, `deposit_method=card|crypto`,
+  `withdraw_method=card|crypto` and `use_deposit_fee`.
+- `/listings` returns individual listings. Shared parameters: `wear`,
+  `variant=any|normal|stattrak|souvenir`, `min_float`, `max_float`,
+  `min_price_cents`, `max_price_cents`, `has_stickers`, `has_charm` and `limit`
+  (1–50). CSFloat sorting (`best_deal|lowest_price`) is passed to its API. CSGO
+  Market always sorts locally by lowest price; `sort_by` is echoed back for UI compatibility.
+- `/api/variants/{variant_id}/market/...` lazily loads and caches details for one
+  exact variant: active listings, buy orders, sales history and the beta liquidity estimate.
+- `/api/listings/{listing_id}/market/csfloat/quick-sell` returns matching CSFloat
+  buy orders for a specific listing.
+- `POST /api/calculate` is a deterministic calculation with no marketplace calls.
+  Body: `buy_price_cents`, `sell_price_cents`, `buy_marketplace`, `sell_marketplace`,
+  and optional `profit_mode`, `deposit_method`, `withdraw_method`, `sell_mode`,
+  `use_deposit_fee`, `use_sell_fee` and `use_withdraw_fee`. The user chooses which
+  operations apply; the rates come from server configuration. The response includes
+  each fee, effective buy and payout, break-even point, profit and three ROI values.
 
-Поиск работает по таблице `skins`, качества — по `skin_variants`, а связь с коллекциями — по `skin_collections`. В таблицах скинов и вариантов сохраняется `raw_data JSONB`, поэтому новые поля источника можно подключать постепенно.
-CSFloat сопоставляется с вариантами по точному `skin_variants.market_hash_name`.
-Последняя минимальная цена хранится в `marketplace_listings`; отсутствие активных
-лотов также кэшируется, чтобы не повторять одинаковые запросы.
+### Caching and freshness
 
-Подробный endpoint вызывается лениво — только при открытии модального окна лота.
-Его ответ хранится в `marketplace_variant_details` 600 секунд и содержит активные
-buy-now листинги, подходящие buy orders и доступную историю продаж в пределах
-возможностей площадки. Если внешний API ограничивает endpoint, backend может
-вернуть сохранённые данные и отдельное безопасное описание ошибки.
+- Price index: CSFloat cache TTL is `CSFLOAT_CACHE_TTL_SECONDS`. CSGO Market index
+  cache is 300 s. An empty result is cached too, to avoid repeated identical requests.
+- Variant details: cached for 600 s. They include active buy-now listings, matching
+  buy orders and available sales history. If an external endpoint is restricted,
+  the backend returns stored data with a safe error description.
+- `listings`, `sales` and `buy_orders` have separate freshness timestamps. A failed
+  refresh keeps the previous data and timestamp, so it does not extend the TTL of
+  the failed part. The response includes a `components` object with `fresh`,
+  `stale` or `unavailable` status for each part. Repeated requests retry only the
+  stale part.
 
-Свежесть подробного ответа отслеживается отдельно для `listings`, `sales` и
-`buy_orders`. Неудачная попытка обновления сохраняет прежние данные и их прежний
-timestamp, поэтому она не продлевает TTL упавшей части. Ответ содержит
-машиночитаемый объект `components` со статусами `fresh`, `stale` или
-`unavailable`; повторный запрос снова пытается обновить только логически
-несвежую строку, даже если общий `fetched_at` последней попытки недавний.
+### Liquidity (beta)
 
-Ликвидность помечена как beta. Это диагностическая оценка качества быстрой
-продажи, а не вероятность продажи и не поправочный коэффициент прибыли:
+This is a diagnostic estimate of quick-sell quality. It is not a sale probability
+and not a profit adjustment factor:
 
 ```text
-depth_score = min(100, near_bid_depth * 10)
+depth_score    = min(100, near_bid_depth * 10)
 activity_score = min(100, sqrt(observed_sales_7d / 14) * 100)
-execution = 60% * price_retention
-          + 40% * depth_score
-score = 40% * execution
-      + 60% * activity_score
+execution      = 60% * price_retention + 40% * depth_score
+score          = 40% * execution + 60% * activity_score
 ```
 
-`price_retention` показывает, какую долю минимальной цены сохраняет лучшая заявка
-на покупку. `near_bid_depth` учитывает количество заявок в пределах 5% от лучшей,
-а `observed_sales_7d` — число наблюдаемых продаж за последние семь дней. Заявки
-проверяются относительно конкретного активного лота; для инвентарного предмета
-результат может отличаться из-за float и наклеек.
+`price_retention` is the share of the minimum ask retained by the best bid.
+`near_bid_depth` counts bids within 5% of the best bid. `observed_sales_7d` is the
+number of observed sales in the last seven days. Bids are checked against a
+specific active listing, so results for inventory items may differ because of float and stickers.
 
-Profit Engine не получает liquidity score: прибыль и ROI рассчитываются только
-из цен в центах и выбранных серверных правил комиссий.
+## Marketplace configuration
 
-## Настройка CSFloat
-
-В `.env` укажите ключ без кавычек:
+### CSFloat
 
 ```dotenv
-CSFLOAT_API_KEY=ваш_ключ
+CSFLOAT_API_KEY=your_key
+CSFLOAT_CACHE_TTL_SECONDS=...    # price index TTL
+CSFLOAT_DETAILS_TTL_SECONDS=...  # variant details TTL
 ```
 
-Ключ не передаётся во frontend и не возвращается API приложения. Публичный
-индекс минимальных цен CSFloat загружается отдельно от конкретных лотов и может
-работать при недоступном или ограниченном listings API. Поэтому цена в карточке
-не гарантирует наличие доступного конкретного лота. Частоту обновления можно
-изменить через
-`CSFLOAT_CACHE_TTL_SECONDS`. Время хранения подробностей регулируется через
-`CSFLOAT_DETAILS_TTL_SECONDS`.
+The key is never sent to the frontend or returned by the API. The public CSFloat
+price index loads separately from individual listings and can work when the
+listings API is unavailable or rate-limited. A price on a card therefore does not
+guarantee that a specific listing exists. Rate limiting follows the `X-RateLimit-*`
+and `Retry-After` headers.
 
-## Adapter CSGO Market
+### CSGO Market
 
-`backend/app/csgomarket.py` загружает публичный USD-прайс-лист лучших предложений
-без API-ключа и нормализует его в тот же формат `price_cents` / `quantity`, который
-использует проект. Приватные методы добавляют конкретные лоты и стакан, а история
-продаж загружается из публичных статических JSON. Результаты синхронизируются с
-общим PostgreSQL-кэшем и участвуют в сравнении цен и ROI.
+`backend/app/csgomarket.py` loads the public USD best-offers price list without an
+API key and normalizes it to the shared `price_cents` / `quantity` format. Private
+methods add listings and the order book. Sales history comes from public static JSON.
 
 ```dotenv
-CSGOMARKET_API_KEY=ваш_ключ
+CSGOMARKET_API_KEY=your_key
 CSGOMARKET_MAX_REQUESTS_PER_SECOND=0.5
 ```
 
-Лимитер общий для всего backend-процесса и равномерно разносит приватные вызовы
-минимум на 2,01 секунды. Настройка программно ограничена значением 0,5 запроса/с
-(30 запросов в минуту), даже если в `.env` случайно указано больше. Ключ не
-возвращается клиенту и не включается в тексты
-ошибок. Индекс цен кэшируется 300 секунд, подробности — 600 секунд, публичный
-индекс истории — 3600 секунд. `extra.stickers` сохраняется как список Steam class
-ID; официальный sticker-каталог использует другую систему ID и поэтому не
-применяется для неподтверждённого сопоставления имён и изображений.
+A process-wide limiter spaces private calls at least 2.01 s apart. The rate is
+capped at 0.5 requests/s (30 per minute), even if a higher value is set. The key is
+never returned to clients or included in error messages. `extra.stickers` is stored
+as a list of Steam class IDs. The official sticker catalog uses a different ID
+system, so it is not used for unverified name or image matching.
 
-## Обновить только каталог
-
-При уже запущенной БД:
-
-```bash
-docker compose run --rm catalog-seed
-```
-
-Команда одинакова в Linux и в PowerShell на Windows.
-
-Источники можно заменить переменными `CATALOG_SOURCE_URL`,
-`CATALOG_GROUPED_SOURCE_URL` и `CATALOG_EXTRA_SOURCE_BASE_URL`. Английская версия
-выбрана намеренно: её `market_hash_name` пригодны для точного поиска цен на
-маркетплейсах. После обновления с версии только со скинами повторно выполните
-`docker compose run --rm catalog-seed`.
-
-Для проверки ключей одним небольшим read-only запросом на площадку:
+### Checking keys
 
 ```bash
 python -m backend.app.check_marketplace_keys
 ```
 
-CSFloat регулируется по его `X-RateLimit-*`/`Retry-After` заголовкам. Подробности
-варианта кэшируются 600 секунд. Приватные запросы CSGO Market по умолчанию
-ограничены значением `CSGOMARKET_MAX_REQUESTS_PER_SECOND=0.5` (30 в минуту).
+This sends one small read-only request per marketplace.
 
-## Тесты
+## Configuration
 
-Linux:
+Catalog sources can be changed with `CATALOG_SOURCE_URL`,
+`CATALOG_GROUPED_SOURCE_URL` and `CATALOG_EXTRA_SOURCE_BASE_URL`. The English
+catalog is used on purpose, because its `market_hash_name` values match marketplace
+search exactly. After upgrading from a skins-only version, run
+`docker compose run --rm catalog-seed` again.
+
+Other settings are in `.env.example`.
+
+## Development and tests
+
+Backend tests:
 
 ```bash
-python -m pip install -r backend/requirements-dev.txt
-python -m pytest
+python -m pip install -r backend/requirements-dev.txt   # Windows: py -m pip ...
+python -m pytest                                        # Windows: py -m pytest
 ```
 
-Windows (PowerShell):
-
-```powershell
-py -m pip install -r backend/requirements-dev.txt
-py -m pytest
-```
-
-Frontend (из `frontend-react`):
+Frontend (from `frontend-react`):
 
 ```bash
 npm ci
@@ -449,28 +377,27 @@ npm test
 npm run build
 ```
 
-Для локальной разработки backend по умолчанию работает в API-only режиме, а
-Vite проксирует `/api` на `http://127.0.0.1:8005`. Запустите процессы в двух
-терминалах:
+For local development the backend runs in API-only mode, and Vite proxies `/api`
+to `http://127.0.0.1:8005`. Run each process in its own terminal:
 
 ```bash
 uvicorn backend.app.main:app --host 127.0.0.1 --port 8005 --reload
 cd frontend-react && npm run dev
 ```
 
-Production-режим `TRUE_ROI_FRONTEND_MODE=static` обслуживает только
-`frontend-react/dist` и останавливает backend с явной ошибкой, если React bundle
-не собран. Docker-образ задаёт этот режим автоматически.
+With `TRUE_ROI_FRONTEND_MODE=static`, the backend serves only `frontend-react/dist`
+and fails with a clear error if the React bundle has not been built. The Docker
+image sets this mode automatically.
 
-Отдельно проверить текущую поддержку наклеек и charm:
+To check sticker and charm support:
 
 ```bash
 python -m pytest tests/test_listing_attachment_capabilities.py -q
 ```
 
-Этот набор подтверждает наличие boolean-фильтров `has_stickers`/`has_charm` для
-attachments внутри лота и фиксирует отсутствие фильтра лотов по конкретному
-имени/ID attachment. Самостоятельные sticker/charm-предметы доступны через общий
-поиск каталога. Поведение зависит от capabilities площадки; CSGO Market не
-предоставляет charm-данные. Frontend-тест `frontend-react/src/shared/api/endpoints.test.ts`
-дополнительно проверяет передачу этих фильтров из API-клиента.
+This test confirms the boolean `has_stickers` / `has_charm` filters for attachments
+inside a listing, and that there is no filter for a specific attachment name or ID.
+Standalone sticker and charm items are available through catalog search. Behavior
+depends on marketplace capabilities; CSGO Market does not provide charm data.
+The frontend test `frontend-react/src/shared/api/endpoints.test.ts` checks that
+these filters are passed through the API client.

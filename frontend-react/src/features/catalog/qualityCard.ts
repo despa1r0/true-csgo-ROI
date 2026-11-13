@@ -18,11 +18,14 @@ export function selectQualityCardMarketData(
 ): { quotes: QualityCardQuote[]; cheapest?: QualityCardQuote; best?: ProfitOpportunity } {
   const quotes = variants
     .flatMap((variant) => Object.entries(variant.markets)
-      .filter((entry): entry is [string, MarketPrice] => entry[1] != null && !entry[1].stale)
+      .filter((entry): entry is [string, MarketPrice] => entry[1] != null)
       .map(([marketplaceId, quote]) => ({ marketplaceId, quote, variant })))
     .sort((left, right) => left.quote.price_cents - right.quote.price_cents);
 
-  const cheapest = quotes[0];
+  // A fresh ask always wins. When every saved ask has outlived its TTL the card
+  // still shows the cheapest saved price (flagged stale by the caller) instead of
+  // an empty card; profit stays hidden because the API drops stale opportunities.
+  const cheapest = quotes.find((item) => !item.quote.stale) ?? quotes[0];
   const opportunities = (cheapest?.variant.opportunities ?? [])
     .filter((item) => (
       (buyMarketplace === "all" || item.buy_marketplace === buyMarketplace)

@@ -43,6 +43,10 @@ def dmarket_without_quotes(monkeypatch):
         market_comparison, "get_dmarket_prices",
         lambda _skin_id: market_response("DMarket", None),
     )
+    monkeypatch.setattr(
+        market_comparison, "get_tradeit_prices",
+        lambda _skin_id: market_response("Tradeit.gg", None),
+    )
 
 
 @pytest.mark.parametrize("mode", ["smart", "quick_flip"])
@@ -51,7 +55,7 @@ def test_cached_comparison_never_requests_providers_or_authenticated_bids(monkey
         pytest.fail("Cached comparison contacted a provider")
 
     for name in ("get_csfloat_prices", "get_csgomarket_prices", "get_whitemarket_prices",
-                 "get_dmarket_prices", "_load_quick_sell_prices"):
+                 "get_dmarket_prices", "get_tradeit_prices", "_load_quick_sell_prices"):
         monkeypatch.setattr(market_comparison, name, forbidden)
     monkeypatch.setattr(market_comparison, "get_csmoney_prices", lambda _id: market_response("CS.MONEY", 1500))
     monkeypatch.setattr(market_comparison, "_cached_liquidity_signals", lambda *_args: {})
@@ -109,8 +113,8 @@ def test_compares_exact_variant_and_calculates_both_profit_directions():
     )
     assert variant["opportunities"][0]["buy_price_source"] == "lowest_ask"
     assert variant["opportunities"][0]["sell_price_source"] == "lowest_ask"
-    assert variant["opportunities"][0]["profit_cents"] == 30
-    assert variant["opportunities"][0]["cash_roi_percent"] == 2.97
+    assert variant["opportunities"][0]["profit_cents"] == 70
+    assert variant["opportunities"][0]["cash_roi_percent"] == 6.93
     reverse = next(
         opportunity
         for opportunity in variant["opportunities"]
@@ -242,8 +246,8 @@ def test_enhanced_mode_skips_only_deposit_fee():
     opportunity = result["variants"][0]["opportunities"][0]
     assert opportunity["deposit_fee_cents"] == 0
     assert opportunity["sell_fee_cents"] == 60
-    assert opportunity["withdraw_fee_cents"] == 100
-    assert opportunity["profit_cents"] == 40
+    assert opportunity["withdraw_fee_cents"] == 60
+    assert opportunity["profit_cents"] == 80
 
 
 def test_quick_flip_uses_best_ranked_buy_to_fast_buy_direction():
@@ -270,7 +274,7 @@ def test_quick_flip_uses_best_ranked_buy_to_fast_buy_direction():
     assert opportunity["buy_price_cents"] == 1000
     assert opportunity["sell_price_cents"] == 900
     assert opportunity["deposit_fee_cents"] == 0
-    assert opportunity["profit_cents"] == -245
+    assert opportunity["profit_cents"] == -190
 
 
 def test_golden_coil_wear_variants_keep_profit_and_prices_isolated():
@@ -311,7 +315,7 @@ def test_golden_coil_wear_variants_keep_profit_and_prices_isolated():
     souvenir = by_id["golden-coil-souvenir-ft"]
 
     assert normal["cheapest_price_cents"] == 5_904
-    assert normal["opportunities"][0]["profit_cents"] == -9
+    assert normal["opportunities"][0]["profit_cents"] == -228
     assert all(
         opportunity["variant_id"] == "golden-coil-normal-ft"
         and opportunity["market_hash_name"] == normal_name
@@ -321,7 +325,7 @@ def test_golden_coil_wear_variants_keep_profit_and_prices_isolated():
     )
 
     assert souvenir["cheapest_price_cents"] == 31_627
-    assert souvenir["opportunities"][0]["profit_cents"] == 16_224
+    assert souvenir["opportunities"][0]["profit_cents"] == 13_784
     assert all(
         opportunity["variant_id"] == "golden-coil-souvenir-ft"
         and opportunity["market_hash_name"] == souvenir_name
@@ -360,8 +364,8 @@ def test_profit_ignores_liquidity_and_attachment_values():
     opportunity = result["variants"][0]["opportunities"][0]
     assert opportunity["buy_price_cents"] == 1_000
     assert opportunity["sell_price_cents"] == 1_200
-    assert opportunity["profit_cents"] == 30
-    assert opportunity["cash_roi_percent"] == 2.97
+    assert opportunity["profit_cents"] == 70
+    assert opportunity["cash_roi_percent"] == 6.93
 
 
 def test_quick_flip_compares_every_supported_sell_market_and_ranks_net_profit():

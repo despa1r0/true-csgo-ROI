@@ -83,4 +83,14 @@ describe("selectQualityCardMarketData", () => {
     expect(result.cheapest?.variant.variant_id).toBe("fresh-ft");
     expect(result.best?.profit_cents).toBe(100);
   });
+
+  it("falls back to the cheapest saved price when every snapshot is stale", () => {
+    const stale = variant("stale-ft", 1000, 500);
+    stale.markets.csfloat = { ...quote(1000), stale: true };
+
+    const result = selectQualityCardMarketData([stale], "all", "auto");
+
+    expect(result.cheapest?.quote.price_cents).toBe(1000);
+    expect(result.cheapest?.quote.stale).toBe(true);
+  });
 });

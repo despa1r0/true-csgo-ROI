@@ -205,7 +205,8 @@ def test_registry_and_comparison_know_dmarket():
     config = MARKETPLACES["dmarket"]
     assert config.can_buy and config.can_sell and config.supports_fast_buy
     assert config.fees.sell.percent == 2
-    assert config.fees.deposit["card"] is None and config.fees.withdraw["card"] is None
+    # Card fees come from Pricempire only (unconfirmed by DMarket); crypto is free.
+    assert config.fees.deposit["card"] is not None and config.fees.withdraw["card"].percent == 2.5
     assert market_comparison.MARKET_RESPONSE_KEYS["DMarket"] == "dmarket"
     assert market_comparison._fast_buy_function("dmarket") is market_comparison.get_dmarket_variant_fast_buy
 

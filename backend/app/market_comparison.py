@@ -17,6 +17,7 @@ from .csgomarket_data import (
 from .csmoney_data import get_csmoney_prices
 from .database import get_connection
 from .dmarket_data import get_dmarket_prices, get_dmarket_variant_fast_buy
+from .tradeit_data import get_tradeit_prices
 from .repositories.market_prices import load_skin_cache
 from .analytics.liquidity import calculate_liquidity
 from .services.market_data import (
@@ -35,6 +36,7 @@ MARKET_RESPONSE_KEYS = {
     "WhiteMarket": "whitemarket",
     "CS.MONEY": "csmoney",
     "DMarket": "dmarket",
+    "Tradeit.gg": "tradeit",
 }
 PROFIT_MODES = {"raw", "smart", "enhanced", "quick_flip"}
 LOG = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ LOG = logging.getLogger(__name__)
 def _cached_price_response(skin_id: str, marketplace: str) -> dict[str, Any]:
     """Read saved asks without provider requests, authentication probes or cache writes."""
     prefix = {"CSFloat": "CSFLOAT", "CSGO Market": "CSGOMARKET", "WhiteMarket": "WHITEMARKET",
-              "DMarket": "DMARKET"}[marketplace]
+              "DMarket": "DMARKET", "Tradeit.gg": "TRADEIT"}[marketplace]
     try:
         ttl = max(1, int(os.getenv(f"{prefix}_CACHE_TTL_SECONDS", "300")))
     except ValueError:
@@ -97,6 +99,7 @@ def get_skin_market_comparison(
         ("WhiteMarket", get_whitemarket_prices),
         ("CS.MONEY", get_csmoney_prices),
         ("DMarket", get_dmarket_prices),
+        ("Tradeit.gg", get_tradeit_prices),
     ]
     if cached_only:
         readers = [(name, lambda item_id, name=name: _cached_price_response(item_id, name))
@@ -472,11 +475,14 @@ def _direction_supports_fees(
     use_deposit_fee: bool,
     profit_mode: str,
 ) -> bool:
-    """Reject a direction when its selected payment method is unsupported."""
-    if profit_mode == "raw":
-        return True
+    """Reject a direction the marketplaces or the selected payment methods cannot serve."""
     buy_config = MARKETPLACES[buy_marketplace]
     sell_config = MARKETPLACES[sell_marketplace]
+    # A buy-only marketplace is never a sale target, with or without fees.
+    if not buy_config.can_buy or not sell_config.can_sell or sell_config.fees.sell is None:
+        return False
+    if profit_mode == "raw":
+        return True
     if (
         _effective_deposit_fee(profit_mode, use_deposit_fee)
         and buy_config.fees.deposit.get(deposit_method) is None

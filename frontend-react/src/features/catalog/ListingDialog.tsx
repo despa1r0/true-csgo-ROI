@@ -75,7 +75,7 @@ export function ListingDialog({ skin, quality, marketplaces, comparison, open, o
   const period = (["24h", "7d", "14d", "all"] as HistoryPeriod[]).find((item) => item === params.get("period")) ?? "7d";
   function setPeriod(value: HistoryPeriod) { update({ period: value }, true); }
   const compareBuy = params.get("compare_buy") ?? listMarkets[0]?.id ?? "csfloat";
-  const compareSell = params.get("compare_sell") ?? listMarkets[1]?.id ?? listMarkets[0]?.id ?? "csgomarket";
+  const compareSell = params.get("compare_sell") ?? listMarkets.find((item) => item.capabilities.can_sell && item.id !== compareBuy)?.id ?? "csgomarket";
   function setCompareBuy(value: string) { update({ compare_buy: value }, true); }
   function setCompareSell(value: string) { update({ compare_sell: value }, true); }
   const market = marketplaces.find((item) => item.id === marketId);

@@ -34,7 +34,7 @@ class MarketplaceConfig:
     fees: MarketplaceFees
 
 
-FEE_CONFIGURATION_VERSION = "2026-11-12"
+FEE_CONFIGURATION_VERSION = "2026-11-13.1"
 
 
 # This is the single registry a new marketplace needs to join.  The API/UI use
@@ -82,9 +82,12 @@ MARKETPLACES = {
                 "card": FeeRule(percent=1),
             },
             sell=FeeRule(percent=5),
+            # market.csgo.com FAQ ("What Is the Commission for Withdrawing
+            # Money?"): 5% of the withdrawal amount for any method; some
+            # payment systems add a small fixed fee that is shown at payout.
             withdraw={
-                "crypto": FeeRule(fixed_cents=100),
-                "card": FeeRule(percent=2.8),
+                "crypto": FeeRule(percent=5),
+                "card": FeeRule(percent=5),
             },
         ),
     ),
@@ -152,15 +155,46 @@ MARKETPLACES = {
             # dmarket.com/faq, "DMarket Fees": the buyer pays no marketplace
             # fee and a CS2 sale costs 2% (illiquid or low-priced items can be
             # charged up to 10%; GET /exchange/v1/customized-fees is exact).
-            # Payment-provider fees are not published there, so only crypto
-            # is configured and it is modelled without a marketplace charge.
+            # Deposit/withdrawal fees are absent from the official FAQ. Card
+            # values come from the Pricempire marketplace page (0% deposit,
+            # 2.5% withdrawal) and are NOT confirmed by DMarket; Pricempire's
+            # 7% seller fee contradicts the FAQ, so the FAQ's 2% is kept.
             deposit={
                 "crypto": FeeRule(percent=0),
-                "card": None,
+                "card": FeeRule(percent=0),
             },
             sell=FeeRule(percent=2),
             withdraw={
                 "crypto": FeeRule(percent=0),
+                "card": FeeRule(percent=2.5),
+            },
+        ),
+    ),
+    "tradeit": MarketplaceConfig(
+        display_name="Tradeit.gg",
+        currency="USD",
+        can_buy=True,
+        # Buy-only: what Tradeit.gg pays for an item depends on the seller's
+        # own inventory and is not exposed by the store endpoint.
+        can_sell=False,
+        supports_fast_buy=False,
+        supports_listings=True,
+        supports_sales_history=False,
+        supports_float=True,
+        supports_stickers=True,
+        supports_charms=False,
+        supports_best_deal_sort=False,
+        fees=MarketplaceFees(
+            # The store price is the full item price. Payment-provider fees
+            # are not published, so only crypto is configured, without a
+            # marketplace charge.
+            deposit={
+                "crypto": FeeRule(percent=0),
+                "card": None,
+            },
+            sell=None,
+            withdraw={
+                "crypto": None,
                 "card": None,
             },
         ),

@@ -33,8 +33,8 @@ def test_manual_calculation_contract_supports_enhanced_mode():
 
     assert result.deposit_fee_cents == 0
     assert result.sell_fee_cents == 60
-    assert result.withdraw_fee_cents == 100
-    assert result.profit_cents == 40
+    assert result.withdraw_fee_cents == 60
+    assert result.profit_cents == 80
 
 
 def test_manual_quick_flip_can_disable_deposit_fee():
@@ -44,7 +44,7 @@ def test_manual_quick_flip_can_disable_deposit_fee():
 
     assert result.deposit_fee_cents == 0
     assert result.sell_fee_cents == 60
-    assert result.withdraw_fee_cents == 100
+    assert result.withdraw_fee_cents == 60
 
 
 @pytest.mark.parametrize(
@@ -53,11 +53,11 @@ def test_manual_quick_flip_can_disable_deposit_fee():
         (False, False, False, 200),
         (True, False, False, 190),
         (False, True, False, 140),
-        (False, False, True, 100),
+        (False, False, True, 140),
         (True, True, False, 130),
-        (True, False, True, 90),
-        (False, True, True, 40),
-        (True, True, True, 30),
+        (True, False, True, 130),
+        (False, True, True, 80),
+        (True, True, True, 70),
     ],
 )
 def test_custom_mode_supports_every_independent_fee_combination(
@@ -83,7 +83,7 @@ def test_custom_mode_supports_every_independent_fee_combination(
 
     assert result.deposit_fee_cents == (10 if use_deposit_fee else 0)
     assert result.sell_fee_cents == (60 if use_sell_fee else 0)
-    assert result.withdraw_fee_cents == (100 if use_withdraw_fee else 0)
+    assert result.withdraw_fee_cents == (60 if use_withdraw_fee else 0)
     assert result.profit_cents == expected_profit
     assert result.applied_fees.deposit.enabled is use_deposit_fee
     assert result.applied_fees.sell.enabled is use_sell_fee
@@ -115,20 +115,20 @@ def test_legacy_presets_ignore_new_checkbox_fields():
         smart_result.deposit_fee_cents,
         smart_result.sell_fee_cents,
         smart_result.withdraw_fee_cents,
-    ) == (10, 60, 100)
+    ) == (10, 60, 60)
     assert (
         enhanced_result.deposit_fee_cents,
         enhanced_result.sell_fee_cents,
         enhanced_result.withdraw_fee_cents,
-    ) == (0, 60, 100)
+    ) == (0, 60, 60)
 
 
 def test_result_exposes_effective_totals_break_even_and_applied_server_rules():
     result = post_calculation(calculation_request("smart"))
 
     assert result.effective_buy_cents == 1010
-    assert result.effective_payout_cents == 1040
-    assert result.break_even_sell_price_cents == 1168
+    assert result.effective_payout_cents == 1080
+    assert result.break_even_sell_price_cents == 1122
     assert result.applied_fees.deposit.model_dump() == {
         "enabled": True,
         "amount_cents": 10,
@@ -137,8 +137,8 @@ def test_result_exposes_effective_totals_break_even_and_applied_server_rules():
         "method": "crypto",
     }
     assert result.applied_fees.sell.percent == 5
-    assert result.applied_fees.withdraw.fixed_cents == 100
-    assert result.fee_configuration_version == "2026-11-12"
+    assert result.applied_fees.withdraw.percent == 5
+    assert result.fee_configuration_version == "2026-11-13.1"
 
 
 def test_request_rejects_client_supplied_fee_rates():
@@ -223,6 +223,6 @@ def test_marketplace_options_expose_dynamic_capabilities_and_fee_rules():
     assert csmoney["capabilities"]["supports_listings"] is True
     assert csmoney["capabilities"]["supports_float"] is True
     assert all(
-        option["fee_configuration_version"] == "2026-11-12"
+        option["fee_configuration_version"] == "2026-11-13.1"
         for option in options.values()
     )

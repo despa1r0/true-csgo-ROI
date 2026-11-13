@@ -75,6 +75,10 @@ npm.cmd run dev -- --host 127.0.0.1
 название; API и изображения перехватываются, запросы к реальным площадкам не нужны.
 При проверке применены [Web Interface Guidelines](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md).
 
+Оформление с 12 ноября 2026: плоские поверхности, тонкие границы, один акцентный цвет, без градиентов. Токены — в `src/shared/styles/tokens.css`. `scripts/qa/check-alignment.py` измеряет центрирование и выравнивание данных в браузере на 1440, 1024 и 390 px.
+
+Площадка с `can_sell: false` (Tradeit.gg) не предлагается как площадка продажи в настройках ROI, сравнении и калькуляторе.
+
 Список площадок и их возможности загружаются из `GET /api/marketplaces`. Frontend использует флаги `can_buy`, `can_sell`, `supports_quick_sell`, `supports_listings`, `supports_sales_history`, `supports_float`, `supports_stickers`, `supports_charms` и `supports_best_deal_sort`. Благодаря этому новую площадку можно подключать через серверный реестр и адаптер без отдельного жёстко заданного интерфейса.
 
 ROI-каталог принимает только пригодные для торговли source entries. Записи без явного `market_hash_name`, account-bound и preview/unreleased определения, а также неподдерживаемые collectibles исключаются при импорте. Новые типы предметов запрашиваются у площадок по точному `market_hash_name`, а не через `paint_index`.
